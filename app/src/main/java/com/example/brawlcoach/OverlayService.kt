@@ -32,6 +32,7 @@ class OverlayService : Service() {
     }
 
     private fun createPanel() {
+
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val root = LinearLayout(this).apply {
@@ -49,11 +50,16 @@ class OverlayService : Service() {
             gravity = Gravity.CENTER_VERTICAL
         }
 
-        val title = TextView(this).apply {
-            text = "⚡ BRAWL COACH"
-            textSize = 16f
+        val dragHandle = TextView(this).apply {
+            text = "☰  DÉPLACER"
+            textSize = 14f
             setTextColor(Color.WHITE)
-            setPadding(4, 8, 12, 8)
+            setPadding(8, 14, 8, 14)
+            isClickable = true
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(48, 58, 82))
+                cornerRadius = 12f
+            }
         }
 
         val reduce = TextView(this).apply {
@@ -61,7 +67,7 @@ class OverlayService : Service() {
             textSize = 25f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(12, 0, 12, 0)
+            setPadding(12, 8, 12, 8)
         }
 
         val close = TextView(this).apply {
@@ -69,16 +75,25 @@ class OverlayService : Service() {
             textSize = 25f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(255, 100, 100))
-            setPadding(12, 0, 8, 0)
+            setPadding(12, 8, 8, 8)
         }
 
-        header.addView(title, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(
+            dragHandle,
+            LinearLayout.LayoutParams(0, -2, 1f)
+        )
         header.addView(reduce)
         header.addView(close)
 
         body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(4, 12, 4, 4)
+        }
+
+        val title = TextView(this).apply {
+            text = "⚡ BRAWL COACH"
+            textSize = 17f
+            setTextColor(Color.WHITE)
         }
 
         val status = TextView(this).apply {
@@ -94,6 +109,7 @@ class OverlayService : Service() {
             setPadding(0, 10, 0, 4)
         }
 
+        body?.addView(title)
         body?.addView(status)
         body?.addView(info)
 
@@ -102,7 +118,8 @@ class OverlayService : Service() {
 
         reduce.setOnClickListener {
             minimized = !minimized
-            body?.visibility = if (minimized) View.GONE else View.VISIBLE
+            body?.visibility =
+                if (minimized) View.GONE else View.VISIBLE
             reduce.text = if (minimized) "+" else "−"
         }
 
@@ -127,8 +144,9 @@ class OverlayService : Service() {
         var touchX = 0f
         var touchY = 0f
 
-        val dragListener = View.OnTouchListener { view, event ->
+        dragHandle.setOnTouchListener { view, event ->
             when (event.action) {
+
                 MotionEvent.ACTION_DOWN -> {
                     startX = params?.x ?: 0
                     startY = params?.y ?: 0
@@ -139,8 +157,11 @@ class OverlayService : Service() {
 
                 MotionEvent.ACTION_MOVE -> {
                     params?.let {
-                        it.x = startX + (event.rawX - touchX).toInt()
-                        it.y = startY + (event.rawY - touchY).toInt()
+                        it.x = startX +
+                            (event.rawX - touchX).toInt()
+                        it.y = startY +
+                            (event.rawY - touchY).toInt()
+
                         windowManager?.updateViewLayout(root, it)
                     }
                     true
@@ -155,9 +176,6 @@ class OverlayService : Service() {
                 else -> false
             }
         }
-
-        header.setOnTouchListener(dragListener)
-        title.setOnTouchListener(dragListener)
 
         panel = root
         windowManager?.addView(root, params)
