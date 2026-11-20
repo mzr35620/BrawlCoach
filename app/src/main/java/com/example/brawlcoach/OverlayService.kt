@@ -27,9 +27,7 @@ class OverlayService : Service() {
         flags: Int,
         startId: Int
     ): Int {
-
         if (panel == null) createPanel()
-
         return START_NOT_STICKY
     }
 
@@ -118,7 +116,19 @@ class OverlayService : Service() {
         var touchX = 0f
         var touchY = 0f
 
-        header.setOnTouchListener { _, event ->
+        params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = 24
+            y = 140
+        }
+
+        title.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = params?.x ?: 0
@@ -137,20 +147,11 @@ class OverlayService : Service() {
                     true
                 }
 
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> true
+
                 else -> false
             }
-        }
-
-        params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.LEFT
-            x = 24
-            y = 140
         }
 
         panel = root
