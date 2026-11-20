@@ -32,7 +32,6 @@ class OverlayService : Service() {
     }
 
     private fun createPanel() {
-
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val root = LinearLayout(this).apply {
@@ -111,11 +110,6 @@ class OverlayService : Service() {
             stopSelf()
         }
 
-        var startX = 0
-        var startY = 0
-        var touchX = 0f
-        var touchY = 0f
-
         params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -128,7 +122,12 @@ class OverlayService : Service() {
             y = 140
         }
 
-        title.setOnTouchListener { _, event ->
+        var startX = 0
+        var startY = 0
+        var touchX = 0f
+        var touchY = 0f
+
+        val dragListener = View.OnTouchListener { view, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startX = params?.x ?: 0
@@ -147,12 +146,18 @@ class OverlayService : Service() {
                     true
                 }
 
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> true
+                MotionEvent.ACTION_UP -> {
+                    view.performClick()
+                    true
+                }
 
+                MotionEvent.ACTION_CANCEL -> true
                 else -> false
             }
         }
+
+        header.setOnTouchListener(dragListener)
+        title.setOnTouchListener(dragListener)
 
         panel = root
         windowManager?.addView(root, params)
