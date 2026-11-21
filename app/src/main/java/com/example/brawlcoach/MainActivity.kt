@@ -2,13 +2,13 @@
 package com.example.brawlcoach
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.graphics.Color
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 
 class MainActivity : Activity() {
@@ -18,8 +18,11 @@ class MainActivity : Activity() {
     private lateinit var modeSpinner: Spinner
     private lateinit var mapSpinner: Spinner
 
-    private val teamSpinners = mutableListOf<Spinner>()
-    private val enemySpinners = mutableListOf<Spinner>()
+    private val teamButtons = mutableListOf<Button>()
+    private val enemyButtons = mutableListOf<Button>()
+
+    private val teamChoices = MutableList(3) { "Non choisi" }
+    private val enemyChoices = MutableList(3) { "Non choisi" }
 
     private var allMaps: List<BrawlMap> = emptyList()
     private var allModes: List<BrawlGameMode> = emptyList()
@@ -100,19 +103,35 @@ class MainActivity : Activity() {
         content.addView(mapSpinner)
 
         content.addView(makeLabel("TON ÉQUIPE"))
+
         repeat(3) { index ->
             content.addView(makeLabel("Coéquipier ${index + 1}"))
-            val spinner = Spinner(this)
-            teamSpinners.add(spinner)
-            content.addView(spinner)
+
+            val button = Button(this).apply {
+                text = "Non choisi"
+                setOnClickListener {
+                    showBrawlerPicker(index, true)
+                }
+            }
+
+            teamButtons.add(button)
+            content.addView(button)
         }
 
         content.addView(makeLabel("ÉQUIPE ADVERSE"))
+
         repeat(3) { index ->
             content.addView(makeLabel("Adversaire ${index + 1}"))
-            val spinner = Spinner(this)
-            enemySpinners.add(spinner)
-            content.addView(spinner)
+
+            val button = Button(this).apply {
+                text = "Non choisi"
+                setOnClickListener {
+                    showBrawlerPicker(index, false)
+                }
+            }
+
+            enemyButtons.add(button)
+            content.addView(button)
         }
 
         content.addView(result)
@@ -142,55 +161,23 @@ class MainActivity : Activity() {
                         .filter { it.isNotBlank() }
                         .distinct()
 
-                    val brawlerNames = listOf("Non choisi") +
-                        allBrawlers.map { it.name }.distinct()
-
-                    val brawlerAdapter = ArrayAdapter(
-                        this,
-                        android.R.layout.simple_spinner_item,
-                        brawlerNames
-                    )
-
-                    brawlerAdapter.setDropDownViewResource(
-                        android.R.layout.simple_spinner_dropdown_item
-                    )
-
-                    (teamSpinners + enemySpinners).forEach { spinner ->
-                        spinner.adapter = brawlerAdapter
-                        spinner.onItemSelectedListener =
-                            object : AdapterView.OnItemSelectedListener {
-                                override fun onItemSelected(
-                                    parent: AdapterView<*>?,
-                                    view: View?,
-                                    position: Int,
-                                    id: Long
-                                ) {
-                                    updateSummary()
-                                }
-
-                                override fun onNothingSelected(
-                                    parent: AdapterView<*>?
-                                ) {}
-                            }
-                    }
-
-                    val modeAdapter = ArrayAdapter(
+                    val adapter = ArrayAdapter(
                         this,
                         android.R.layout.simple_spinner_item,
                         modeNames
                     )
 
-                    modeAdapter.setDropDownViewResource(
+                    adapter.setDropDownViewResource(
                         android.R.layout.simple_spinner_dropdown_item
                     )
 
-                    modeSpinner.adapter = modeAdapter
+                    modeSpinner.adapter = adapter
 
                     modeSpinner.onItemSelectedListener =
                         object : AdapterView.OnItemSelectedListener {
                             override fun onItemSelected(
                                 parent: AdapterView<*>?,
-                                view: View?,
+                                view: android.view.View?,
                                 position: Int,
                                 id: Long
                             ) {
@@ -208,9 +195,9 @@ class MainActivity : Activity() {
                     result.text =
                         "Connexion réussie !\n\n" +
                         "Combattants : ${brawlers.size}\n" +
-                        "Cartes disponibles : ${allMaps.size}\n" +
-                        "Modes disponibles : ${modeNames.size}\n\n" +
-                        "Choisis ton mode, ta carte et les combattants."
+                        "Cartes : ${allMaps.size}\n" +
+                        "Modes : ${modeNames.size}\n\n" +
+                        "Choisis tes combattants."
 
                     loadButton.text = "Actualiser les données"
                     loadButton.isEnabled = true
@@ -226,13 +213,46 @@ class MainActivity : Activity() {
         }.start()
     }
 
-    private fun updateMaps(modeName: String) {
-        val filteredMaps = allMaps.filter {
-            it.gameMode.equals(modeName, ignoreCase = true)
+    private fun showBrawlerPicker(index: Int, isTeam: Boolean) {
+        if (allBrawlers.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Charge d'abord les données BrawlAPI.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
         }
 
-        val mapNames = filteredMaps.map { it.name }
-            .filter { it.isNotBlank() }
+        val names = arrayOf("Non choisi") +
+            allBrawlers.map { it.name }.distinct().toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                if (isTeam) "Choisir un coéquipier"
+                else "Choisir un adversaire"
+            )
+            .setItems(names) { _, position ->
+
+                val choice = names[position]
+
+                if (isTeam) {
+                    teamChoices[index] = choice
+                    teamButtons[index].text = choice
+                } else {
+                    enemyChoices[index] = choice
+                    enemyButtons[index].text = choice
+                }
+
+                updateSummary()
+            }
+            .setNegativeButton("Annuler", null)
+            .show()
+    }
+
+    private fun updateMaps(modeName: String) {
+        val mapNames = allMaps.filter {
+            it.gameMode.equals(modeName, ignoreCase = true)
+        }.map { it.name }.filter { it.isNotBlank() }
 
         val adapter = ArrayAdapter(
             this,
@@ -251,15 +271,11 @@ class MainActivity : Activity() {
             object : AdapterView.OnItemSelectedListener {
                 override fun onItemSelected(
                     parent: AdapterView<*>?,
-                    view: View?,
+                    view: android.view.View?,
                     position: Int,
                     id: Long
                 ) {
-                    selectedMap = if (mapNames.isNotEmpty()) {
-                        mapNames[position]
-                    } else {
-                        ""
-                    }
+                    selectedMap = mapNames.getOrElse(position) { "" }
                     updateSummary()
                 }
 
@@ -270,27 +286,19 @@ class MainActivity : Activity() {
     }
 
     private fun updateSummary() {
-        if (allBrawlers.isEmpty()) return
-
-        val team = teamSpinners.mapIndexedNotNull { index, spinner ->
-            spinner.selectedItem?.toString()
-                ?.takeIf { it != "Non choisi" }
-                ?.let { "Coéquipier ${index + 1} : $it" }
-        }
-
-        val enemies = enemySpinners.mapIndexedNotNull { index, spinner ->
-            spinner.selectedItem?.toString()
-                ?.takeIf { it != "Non choisi" }
-                ?.let { "Adversaire ${index + 1} : $it" }
-        }
-
         result.text =
             "MODE : ${selectedMode.ifBlank { "Non choisi" }}\n" +
             "CARTE : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
             "TON ÉQUIPE\n" +
-            (team.joinToString("\n").ifBlank { "Aucun choix" }) +
+            teamChoices.mapIndexedNotNull { index, name ->
+                if (name == "Non choisi") null
+                else "Coéquipier ${index + 1} : $name"
+            }.joinToString("\n").ifBlank { "Aucun choix" } +
             "\n\nÉQUIPE ADVERSE\n" +
-            (enemies.joinToString("\n").ifBlank { "Aucun choix" }) +
+            enemyChoices.mapIndexedNotNull { index, name ->
+                if (name == "Non choisi") null
+                else "Adversaire ${index + 1} : $name"
+            }.joinToString("\n").ifBlank { "Aucun choix" } +
             "\n\nSélection enregistrée."
     }
 }
