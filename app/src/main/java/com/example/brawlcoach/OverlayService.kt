@@ -22,6 +22,24 @@ class OverlayService : Service() {
     private var params: WindowManager.LayoutParams? = null
     private var minimized = false
 
+    private fun background(color: Int, radius: Float): GradientDrawable {
+        return GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = radius
+        }
+    }
+
+    private fun makeText(
+        value: String,
+        size: Float,
+        color: Int
+    ) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
@@ -32,15 +50,18 @@ class OverlayService : Service() {
     }
 
     private fun createPanel() {
-
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(16, 14, 16, 14)
+            setPadding(14, 12, 14, 14)
             background = GradientDrawable().apply {
-                setColor(Color.rgb(20, 27, 43))
-                cornerRadius = 28f
+                colors = intArrayOf(
+                    Color.rgb(24, 29, 49),
+                    Color.rgb(13, 17, 31)
+                )
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                cornerRadius = 24f
                 setStroke(2, Color.rgb(124, 77, 255))
             }
         }
@@ -51,75 +72,53 @@ class OverlayService : Service() {
         }
 
         val dragHandle = TextView(this).apply {
-            text = "☰  DÉPLACER"
-            textSize = 14f
+            text = "☰  BRAWL COACH"
+            textSize = 15f
             setTextColor(Color.WHITE)
-            setPadding(8, 14, 8, 14)
-            isClickable = true
-            background = GradientDrawable().apply {
-                setColor(Color.rgb(48, 58, 82))
-                cornerRadius = 12f
-            }
+            setPadding(10, 14, 10, 14)
+            background = background(Color.rgb(48, 53, 83), 14f)
         }
 
-        val reduce = TextView(this).apply {
-            text = "−"
-            textSize = 25f
+        val reduce = makeText("−", 25f, Color.WHITE).apply {
             gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setPadding(12, 8, 12, 8)
+            setPadding(12, 5, 12, 5)
         }
 
-        val close = TextView(this).apply {
-            text = "×"
-            textSize = 25f
+        val close = makeText("×", 25f, Color.rgb(255, 100, 120)).apply {
             gravity = Gravity.CENTER
-            setTextColor(Color.rgb(255, 100, 100))
-            setPadding(12, 8, 8, 8)
+            setPadding(12, 5, 8, 5)
         }
 
-        header.addView(
-            dragHandle,
-            LinearLayout.LayoutParams(0, -2, 1f)
-        )
+        header.addView(dragHandle, LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(reduce)
         header.addView(close)
 
         body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(4, 12, 4, 4)
+            setPadding(4, 14, 4, 4)
         }
 
-        val title = TextView(this).apply {
-            text = "⚡ BRAWL COACH"
-            textSize = 17f
-            setTextColor(Color.WHITE)
+        val status = makeText("●  ASSISTANT ACTIF", 13f, Color.rgb(100, 240, 170))
+        val separator = View(this).apply {
+            setBackgroundColor(Color.rgb(65, 70, 100))
         }
+        val info = makeText("Prêt pour une partie !", 14f, Color.LTGRAY)
+        val footer = makeText("BRAWL COACH  •  VERSION 2", 10f, Color.rgb(150, 155, 180))
 
-        val status = TextView(this).apply {
-            text = "● Assistant actif"
-            textSize = 14f
-            setTextColor(Color.rgb(100, 230, 160))
-        }
-
-        val info = TextView(this).apply {
-            text = "Prêt pour une partie !"
-            textSize = 13f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, 10, 0, 4)
-        }
-
-        body?.addView(title)
         body?.addView(status)
+        body?.addView(separator, LinearLayout.LayoutParams(-1, 1).apply {
+            topMargin = 10
+            bottomMargin = 10
+        })
         body?.addView(info)
+        body?.addView(footer)
 
         root.addView(header)
         root.addView(body)
 
         reduce.setOnClickListener {
             minimized = !minimized
-            body?.visibility =
-                if (minimized) View.GONE else View.VISIBLE
+            body?.visibility = if (minimized) View.GONE else View.VISIBLE
             reduce.text = if (minimized) "+" else "−"
         }
 
@@ -146,7 +145,6 @@ class OverlayService : Service() {
 
         dragHandle.setOnTouchListener { view, event ->
             when (event.action) {
-
                 MotionEvent.ACTION_DOWN -> {
                     startX = params?.x ?: 0
                     startY = params?.y ?: 0
@@ -154,24 +152,18 @@ class OverlayService : Service() {
                     touchY = event.rawY
                     true
                 }
-
                 MotionEvent.ACTION_MOVE -> {
                     params?.let {
-                        it.x = startX +
-                            (event.rawX - touchX).toInt()
-                        it.y = startY +
-                            (event.rawY - touchY).toInt()
-
+                        it.x = startX + (event.rawX - touchX).toInt()
+                        it.y = startY + (event.rawY - touchY).toInt()
                         windowManager?.updateViewLayout(root, it)
                     }
                     true
                 }
-
                 MotionEvent.ACTION_UP -> {
                     view.performClick()
                     true
                 }
-
                 MotionEvent.ACTION_CANCEL -> true
                 else -> false
             }
@@ -182,9 +174,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
-        panel?.let {
-            windowManager?.removeView(it)
-        }
+        panel?.let { windowManager?.removeView(it) }
         panel = null
         super.onDestroy()
     }
