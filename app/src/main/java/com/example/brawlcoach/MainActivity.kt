@@ -323,35 +323,47 @@ class MainActivity : Activity() {
             }
 
         val teamCounts = teamClasses
-            .groupingBy { it.lowercase() }
+            .groupingBy { it.trim().lowercase() }
             .eachCount()
 
         val enemyCounts = enemyClasses
-            .groupingBy { it.lowercase() }
+            .groupingBy { it.trim().lowercase() }
             .eachCount()
 
         val recommendations = allBrawlers
             .filter { it.name !in unavailable }
             .map { brawler ->
 
-                val role = brawler.className.lowercase()
+                val role = brawler.className.trim().lowercase()
 
                 var score = 50
 
                 if (role.isNotBlank()) {
+
+                    // Analyse de notre équipe.
                     val teamCount = teamCounts[role] ?: 0
 
-                    // Favorise une classe absente de notre équipe.
-                    score += if (teamCount == 0) 20 else -10 * teamCount
+                    score += if (teamCount == 0) {
+                        20
+                    } else {
+                        -10 * teamCount
+                    }
 
-                    // Favorise légèrement la variété des classes.
                     if (teamCount == 0) {
                         score += 5
                     }
 
-                    // Évite de surcharger une classe déjà très présente.
                     if (teamCount >= 2) {
                         score -= 10
+                    }
+
+                    // NOUVEAU : prise en compte des adversaires.
+                    val enemyCount = enemyCounts[role] ?: 0
+
+                    if (enemyCount == 0) {
+                        score += 8
+                    } else {
+                        score -= 8 * enemyCount
                     }
                 }
 
@@ -410,11 +422,12 @@ class MainActivity : Activity() {
             append("\nCarte : ")
             append(selectedMap.ifBlank { "Non choisie" })
 
-            append("\n\nScore indicatif basé sur la diversité ")
-            append("des classes de ton équipe.")
+            append("\n\nLe score tient compte de la diversité ")
+            append("de ton équipe et des classes adverses.")
 
-            append("\nLes contres réels et statistiques de victoire ")
-            append("par carte ne sont pas encore intégrés.")
+            append("\nCe calcul est indicatif : les vrais contres ")
+            append("et statistiques de victoire par carte ")
+            append("ne sont pas encore intégrés.")
         }
 
         result.text = message
