@@ -296,27 +296,15 @@ class MainActivity : Activity() {
     }
 
     private fun recommendBrawlers() {
+
         if (allBrawlers.isEmpty()) {
-            Toast.makeText(
-                this,
-                "Charge d'abord les données.",
-                Toast.LENGTH_SHORT
-            ).show()
+            result.text = "Charge d'abord les données."
             return
         }
 
         val unavailable = (teamChoices + enemyChoices)
             .filter { it != "Non choisi" }
             .toSet()
-
-        val candidates = allBrawlers
-            .filter { it.name !in unavailable }
-            .toMutableList()
-
-        if (candidates.isEmpty()) {
-            result.text = "Aucun combattant disponible."
-            return
-        }
 
         val teamClasses = teamChoices
             .filter { it != "Non choisi" }
@@ -326,39 +314,66 @@ class MainActivity : Activity() {
                     ?.takeIf { it.isNotBlank() }
             }
 
-        val recommendations = mutableListOf<Brawler>()
-        val usedClasses = teamClasses.toMutableList()
-
-        repeat(3) {
-            if (candidates.isNotEmpty()) {
-                val best = candidates.maxByOrNull { brawler ->
-                    val role = brawler.className
-                    when {
-                        role.isBlank() -> 0
-                        usedClasses.count {
-                            it.equals(role, ignoreCase = true)
-                        } == 0 -> 10
-                        else -> -5 * usedClasses.count {
-                            it.equals(role, ignoreCase = true)
-                        }
-                    }
-                }
-
-                if (best != null) {
-                    recommendations.add(best)
-                    candidates.remove(best)
-
-                    if (best.className.isNotBlank()) {
-                        usedClasses.add(best.className)
-                    }
-                }
+        val enemyClasses = enemyChoices
+            .filter { it != "Non choisi" }
+            .mapNotNull { name ->
+                allBrawlers.find { it.name == name }
+                    ?.className
+                    ?.takeIf { it.isNotBlank() }
             }
+
+        val teamCounts = teamClasses
+            .groupingBy { it.lowercase() }
+            .eachCount()
+
+        val enemyCounts = enemyClasses
+            .groupingBy { it.lowercase() }
+            .eachCount()
+
+        val recommendations = allBrawlers
+            .filter { it.name !in unavailable }
+            .map { brawler ->
+
+                val role = brawler.className.lowercase()
+
+                var score = 50
+
+                if (role.isNotBlank()) {
+                    val teamCount = teamCounts[role] ?: 0
+
+                    // Favorise une classe absente de notre équipe.
+                    score += if (teamCount == 0) 20 else -10 * teamCount
+
+                    // Favorise légèrement la variété des classes.
+                    if (teamCount == 0) {
+                        score += 5
+                    }
+
+                    // Évite de surcharger une classe déjà très présente.
+                    if (teamCount >= 2) {
+                        score -= 10
+                    }
+                }
+
+                Pair(brawler, score)
+            }
+            .sortedByDescending { it.second }
+            .take(3)
+
+        if (recommendations.isEmpty()) {
+            result.text = "Aucune recommandation disponible."
+            return
         }
 
         val message = buildString {
-            append("LES 3 RECOMMANDATIONS\n\n")
 
-            recommendations.forEachIndexed { index, brawler ->
+            append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
+
+            recommendations.forEachIndexed { index, pair ->
+
+                val brawler = pair.first
+                val score = pair.second
+
                 append("${index + 1}. ${brawler.name}\n")
                 append("Classe : ")
                 append(
@@ -366,19 +381,40 @@ class MainActivity : Activity() {
                         "Non renseignée"
                     }
                 )
-                append("\n\n")
+                append("\nScore de composition : $score\n\n")
             }
 
-            append("Mode : ")
+            append("📊 ANALYSE DE TON ÉQUIPE\n")
+
+            if (teamClasses.isEmpty()) {
+                append("Aucun coéquipier sélectionné.\n")
+            } else {
+                teamCounts.forEach { (role, count) ->
+                    append("$role : $count\n")
+                }
+            }
+
+            append("\n🔎 ANALYSE DES ADVERSAIRES\n")
+
+            if (enemyClasses.isEmpty()) {
+                append("Aucun adversaire sélectionné.\n")
+            } else {
+                enemyCounts.forEach { (role, count) ->
+                    append("$role : $count\n")
+                }
+            }
+
+            append("\nMode : ")
             append(selectedMode.ifBlank { "Non choisi" })
+
             append("\nCarte : ")
             append(selectedMap.ifBlank { "Non choisie" })
 
-            append("\n\nAnalyse provisoire basée sur la diversité ")
+            append("\n\nScore indicatif basé sur la diversité ")
             append("des classes de ton équipe.")
 
-            append("\nLes statistiques de victoire et les ")
-            append("véritables contres ne sont pas encore intégrés.")
+            append("\nLes contres réels et statistiques de victoire ")
+            append("par carte ne sont pas encore intégrés.")
         }
 
         result.text = message
