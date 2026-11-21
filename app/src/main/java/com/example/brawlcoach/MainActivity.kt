@@ -9,6 +9,8 @@ import android.os.Bundle
 import android.provider.Settings
 import android.graphics.Color
 import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.*
 
 class MainActivity : Activity() {
@@ -149,6 +151,62 @@ class MainActivity : Activity() {
         setContentView(scrollView)
     }
 
+    // Menus avec texte blanc et fond sombre
+    private fun createSpinnerAdapter(
+        values: List<String>
+    ): ArrayAdapter<String> {
+
+        return object : ArrayAdapter<String>(
+            this,
+            android.R.layout.simple_spinner_item,
+            values
+        ) {
+
+            override fun getView(
+                position: Int,
+                convertView: View?,
+                parent: ViewGroup
+            ): View {
+
+                val view = super.getView(
+                    position,
+                    convertView,
+                    parent
+                ) as TextView
+
+                view.setTextColor(Color.WHITE)
+                view.textSize = 18f
+                view.setPadding(16, 12, 16, 12)
+
+                return view
+            }
+
+            override fun getDropDownView(
+                position: Int,
+                convertView: View?,
+                parent: ViewGroup
+            ): View {
+
+                val view = super.getDropDownView(
+                    position,
+                    convertView,
+                    parent
+                ) as TextView
+
+                view.setTextColor(Color.WHITE)
+                view.textSize = 18f
+                view.setBackgroundColor(Color.rgb(31, 41, 55))
+                view.setPadding(20, 16, 20, 16)
+
+                return view
+            }
+        }.apply {
+            setDropDownViewResource(
+                android.R.layout.simple_spinner_dropdown_item
+            )
+        }
+    }
+
     private fun loadBrawlData() {
         loadButton.isEnabled = false
         loadButton.text = "Chargement..."
@@ -169,23 +227,15 @@ class MainActivity : Activity() {
                         .filter { it.isNotBlank() }
                         .distinct()
 
-                    val adapter = ArrayAdapter(
-                        this,
-                        android.R.layout.simple_spinner_item,
-                        modeNames
-                    )
-
-                    adapter.setDropDownViewResource(
-                        android.R.layout.simple_spinner_dropdown_item
-                    )
-
-                    modeSpinner.adapter = adapter
+                    modeSpinner.adapter =
+                        createSpinnerAdapter(modeNames)
 
                     modeSpinner.onItemSelectedListener =
                         object : AdapterView.OnItemSelectedListener {
+
                             override fun onItemSelected(
                                 parent: AdapterView<*>?,
-                                view: android.view.View?,
+                                view: View?,
                                 position: Int,
                                 id: Long
                             ) {
@@ -264,24 +314,20 @@ class MainActivity : Activity() {
             it.gameMode.equals(modeName, ignoreCase = true)
         }.map { it.name }.filter { it.isNotBlank() }
 
-        val adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_item,
-            if (mapNames.isEmpty()) listOf("Aucune carte disponible")
-            else mapNames
-        )
+        val values = if (mapNames.isEmpty()) {
+            listOf("Aucune carte disponible")
+        } else {
+            mapNames
+        }
 
-        adapter.setDropDownViewResource(
-            android.R.layout.simple_spinner_dropdown_item
-        )
-
-        mapSpinner.adapter = adapter
+        mapSpinner.adapter = createSpinnerAdapter(values)
 
         mapSpinner.onItemSelectedListener =
             object : AdapterView.OnItemSelectedListener {
+
                 override fun onItemSelected(
                     parent: AdapterView<*>?,
-                    view: android.view.View?,
+                    view: View?,
                     position: Int,
                     id: Long
                 ) {
@@ -339,32 +385,14 @@ class MainActivity : Activity() {
                 var score = 50
 
                 if (role.isNotBlank()) {
-
-                    // Analyse de notre équipe.
                     val teamCount = teamCounts[role] ?: 0
+                    score += if (teamCount == 0) 20 else -10 * teamCount
+                    if (teamCount == 0) score += 5
+                    if (teamCount >= 2) score -= 10
 
-                    score += if (teamCount == 0) {
-                        20
-                    } else {
-                        -10 * teamCount
-                    }
-
-                    if (teamCount == 0) {
-                        score += 5
-                    }
-
-                    if (teamCount >= 2) {
-                        score -= 10
-                    }
-
-                    // NOUVEAU : prise en compte des adversaires.
                     val enemyCount = enemyCounts[role] ?: 0
-
-                    if (enemyCount == 0) {
-                        score += 8
-                    } else {
-                        score -= 8 * enemyCount
-                    }
+                    if (enemyCount == 0) score += 8
+                    else score -= 8 * enemyCount
                 }
 
                 Pair(brawler, score)
@@ -378,21 +406,15 @@ class MainActivity : Activity() {
         }
 
         val message = buildString {
-
             append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
 
             recommendations.forEachIndexed { index, pair ->
-
                 val brawler = pair.first
                 val score = pair.second
 
                 append("${index + 1}. ${brawler.name}\n")
                 append("Classe : ")
-                append(
-                    brawler.className.ifBlank {
-                        "Non renseignée"
-                    }
-                )
+                append(brawler.className.ifBlank { "Non renseignée" })
                 append("\nScore de composition : $score\n\n")
             }
 
@@ -418,13 +440,11 @@ class MainActivity : Activity() {
 
             append("\nMode : ")
             append(selectedMode.ifBlank { "Non choisi" })
-
             append("\nCarte : ")
             append(selectedMap.ifBlank { "Non choisie" })
 
             append("\n\nLe score tient compte de la diversité ")
             append("de ton équipe et des classes adverses.")
-
             append("\nCe calcul est indicatif : les vrais contres ")
             append("et statistiques de victoire par carte ")
             append("ne sont pas encore intégrés.")
