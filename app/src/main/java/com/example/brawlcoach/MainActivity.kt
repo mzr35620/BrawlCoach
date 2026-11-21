@@ -15,6 +15,7 @@ class MainActivity : Activity() {
 
     private lateinit var result: TextView
     private lateinit var loadButton: Button
+    private lateinit var recommendButton: Button
     private lateinit var modeSpinner: Spinner
     private lateinit var mapSpinner: Spinner
 
@@ -93,6 +94,12 @@ class MainActivity : Activity() {
             setPadding(8, 20, 8, 20)
         }
 
+        recommendButton = Button(this).apply {
+            text = "TROUVER LES 3 MEILLEURS COMBATTANTS"
+            setOnClickListener { recommendBrawlers() }
+            isEnabled = false
+        }
+
         content.addView(title)
         content.addView(subtitle)
         content.addView(overlay)
@@ -134,6 +141,7 @@ class MainActivity : Activity() {
             content.addView(button)
         }
 
+        content.addView(recommendButton)
         content.addView(result)
 
         val scrollView = ScrollView(this)
@@ -191,6 +199,8 @@ class MainActivity : Activity() {
                                 parent: AdapterView<*>?
                             ) {}
                         }
+
+                    recommendButton.isEnabled = true
 
                     result.text =
                         "Connexion réussie !\n\n" +
@@ -283,6 +293,95 @@ class MainActivity : Activity() {
                     parent: AdapterView<*>?
                 ) {}
             }
+    }
+
+    private fun recommendBrawlers() {
+        if (allBrawlers.isEmpty()) {
+            Toast.makeText(
+                this,
+                "Charge d'abord les données.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val unavailable = (teamChoices + enemyChoices)
+            .filter { it != "Non choisi" }
+            .toSet()
+
+        val candidates = allBrawlers
+            .filter { it.name !in unavailable }
+            .toMutableList()
+
+        if (candidates.isEmpty()) {
+            result.text = "Aucun combattant disponible."
+            return
+        }
+
+        val teamClasses = teamChoices
+            .filter { it != "Non choisi" }
+            .mapNotNull { name ->
+                allBrawlers.find { it.name == name }
+                    ?.className
+                    ?.takeIf { it.isNotBlank() }
+            }
+
+        val recommendations = mutableListOf<Brawler>()
+        val usedClasses = teamClasses.toMutableList()
+
+        repeat(3) {
+            if (candidates.isNotEmpty()) {
+                val best = candidates.maxByOrNull { brawler ->
+                    val role = brawler.className
+                    when {
+                        role.isBlank() -> 0
+                        usedClasses.count {
+                            it.equals(role, ignoreCase = true)
+                        } == 0 -> 10
+                        else -> -5 * usedClasses.count {
+                            it.equals(role, ignoreCase = true)
+                        }
+                    }
+                }
+
+                if (best != null) {
+                    recommendations.add(best)
+                    candidates.remove(best)
+
+                    if (best.className.isNotBlank()) {
+                        usedClasses.add(best.className)
+                    }
+                }
+            }
+        }
+
+        val message = buildString {
+            append("LES 3 RECOMMANDATIONS\n\n")
+
+            recommendations.forEachIndexed { index, brawler ->
+                append("${index + 1}. ${brawler.name}\n")
+                append("Classe : ")
+                append(
+                    brawler.className.ifBlank {
+                        "Non renseignée"
+                    }
+                )
+                append("\n\n")
+            }
+
+            append("Mode : ")
+            append(selectedMode.ifBlank { "Non choisi" })
+            append("\nCarte : ")
+            append(selectedMap.ifBlank { "Non choisie" })
+
+            append("\n\nAnalyse provisoire basée sur la diversité ")
+            append("des classes de ton équipe.")
+
+            append("\nLes statistiques de victoire et les ")
+            append("véritables contres ne sont pas encore intégrés.")
+        }
+
+        result.text = message
     }
 
     private fun updateSummary() {
