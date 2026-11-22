@@ -104,7 +104,7 @@ class MainActivity : Activity() {
 
                 result.text =
                     "Autorisation Android demandée.\n" +
-                    "Choisis uniquement Brawl Stars dans la fenêtre système."
+                    "Choisis uniquement Brawl Stars."
 
                 startActivityForResult(intent, REQUEST_CAPTURE)
             }
@@ -207,14 +207,44 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
 
         if (requestCode == REQUEST_CAPTURE) {
+
             if (resultCode == Activity.RESULT_OK && data != null) {
+
                 captureResultCode = resultCode
                 captureData = data
 
-                result.text =
-                    "Autorisation accordée !\n\n" +
-                    "Elle est conservée temporairement.\n" +
-                    "La capture n'est pas encore démarrée."
+                val serviceIntent = Intent(
+                    this,
+                    BrawlCaptureService::class.java
+                ).apply {
+                    putExtra(
+                        BrawlCaptureService.EXTRA_RESULT_CODE,
+                        resultCode
+                    )
+                    putExtra(
+                        BrawlCaptureService.EXTRA_DATA,
+                        data
+                    )
+                }
+
+                try {
+                    if (Build.VERSION.SDK_INT >= 26) {
+                        startForegroundService(serviceIntent)
+                    } else {
+                        startService(serviceIntent)
+                    }
+
+                    result.text =
+                        "Autorisation accordée !\n\n" +
+                        "Démarrage du service de capture demandé."
+
+                    captureData = null
+
+                } catch (e: Exception) {
+                    result.text =
+                        "Erreur au démarrage : ${e.message}"
+                }
+
             } else {
                 captureResultCode = Activity.RESULT_CANCELED
                 captureData = null
