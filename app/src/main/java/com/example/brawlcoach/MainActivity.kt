@@ -34,6 +34,10 @@ class MainActivity : Activity() {
     private var selectedMode = ""
     private var selectedMap = ""
 
+    // Autorisation Android de capture, conservée temporairement en mémoire.
+    private var captureResultCode: Int = Activity.RESULT_CANCELED
+    private var captureData: Intent? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -80,6 +84,25 @@ class MainActivity : Activity() {
             }
         }
 
+        val captureButton = Button(this).apply {
+            text = "Préparer l'analyse de Brawl Stars"
+            setOnClickListener {
+                val intent = BrawlScreenCapture.createCaptureIntent(this@MainActivity)
+
+                if (intent == null) {
+                    result.text =
+                        "Cette fonction nécessite Android 14 ou une version supérieure."
+                    return@setOnClickListener
+                }
+
+                result.text =
+                    "Autorisation Android demandée.\n" +
+                    "Choisis uniquement Brawl Stars dans la fenêtre système."
+
+                startActivityForResult(intent, REQUEST_CAPTURE)
+            }
+        }
+
         loadButton = Button(this).apply {
             text = "Charger les données BrawlAPI"
             setOnClickListener { loadBrawlData() }
@@ -105,6 +128,7 @@ class MainActivity : Activity() {
         content.addView(title)
         content.addView(subtitle)
         content.addView(overlay)
+        content.addView(captureButton)
         content.addView(loadButton)
         content.addView(makeLabel("MODE DE JEU"))
         content.addView(modeSpinner)
@@ -151,7 +175,38 @@ class MainActivity : Activity() {
         setContentView(scrollView)
     }
 
-    // Menus avec texte blanc et fond sombre
+    @Deprecated("Utilisé pour recevoir l'autorisation MediaProjection")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_CAPTURE) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                captureResultCode = resultCode
+                captureData = data
+
+                result.text =
+                    "Autorisation accordée !\n\n" +
+                    "L'autorisation est conservée temporairement.\n" +
+                    "La capture n'est pas encore démarrée."
+            } else {
+                captureResultCode = Activity.RESULT_CANCELED
+                captureData = null
+
+                result.text =
+                    "Autorisation refusée ou annulée.\n" +
+                    "Aucune capture ne sera effectuée."
+            }
+        }
+    }
+
+    companion object {
+        private const val REQUEST_CAPTURE = 2001
+    }
+
     private fun createSpinnerAdapter(
         values: List<String>
     ): ArrayAdapter<String> {
