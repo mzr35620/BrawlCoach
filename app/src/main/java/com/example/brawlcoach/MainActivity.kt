@@ -12,6 +12,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
+import android.os.Build
 
 class MainActivity : Activity() {
 
@@ -34,9 +37,12 @@ class MainActivity : Activity() {
     private var selectedMode = ""
     private var selectedMap = ""
 
-    // Autorisation Android de capture, conservée temporairement en mémoire.
     private var captureResultCode: Int = Activity.RESULT_CANCELED
     private var captureData: Intent? = null
+
+    companion object {
+        private const val REQUEST_CAPTURE = 2001
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,12 +92,13 @@ class MainActivity : Activity() {
 
         val captureButton = Button(this).apply {
             text = "Préparer l'analyse de Brawl Stars"
+
             setOnClickListener {
-                val intent = BrawlScreenCapture.createCaptureIntent(this@MainActivity)
+                val intent = createCaptureIntent()
 
                 if (intent == null) {
                     result.text =
-                        "Cette fonction nécessite Android 14 ou une version supérieure."
+                        "Cette fonction nécessite Android 14 ou supérieur."
                     return@setOnClickListener
                 }
 
@@ -130,8 +137,10 @@ class MainActivity : Activity() {
         content.addView(overlay)
         content.addView(captureButton)
         content.addView(loadButton)
+
         content.addView(makeLabel("MODE DE JEU"))
         content.addView(modeSpinner)
+
         content.addView(makeLabel("CARTE"))
         content.addView(mapSpinner)
 
@@ -175,6 +184,20 @@ class MainActivity : Activity() {
         setContentView(scrollView)
     }
 
+    private fun createCaptureIntent(): Intent? {
+        if (Build.VERSION.SDK_INT < 34) {
+            return null
+        }
+
+        val manager = getSystemService(
+            MEDIA_PROJECTION_SERVICE
+        ) as MediaProjectionManager
+
+        return manager.createScreenCaptureIntent(
+            MediaProjectionConfig.createConfigForUserChoice()
+        )
+    }
+
     @Deprecated("Utilisé pour recevoir l'autorisation MediaProjection")
     override fun onActivityResult(
         requestCode: Int,
@@ -190,7 +213,7 @@ class MainActivity : Activity() {
 
                 result.text =
                     "Autorisation accordée !\n\n" +
-                    "L'autorisation est conservée temporairement.\n" +
+                    "Elle est conservée temporairement.\n" +
                     "La capture n'est pas encore démarrée."
             } else {
                 captureResultCode = Activity.RESULT_CANCELED
@@ -201,10 +224,6 @@ class MainActivity : Activity() {
                     "Aucune capture ne sera effectuée."
             }
         }
-    }
-
-    companion object {
-        private const val REQUEST_CAPTURE = 2001
     }
 
     private fun createSpinnerAdapter(
