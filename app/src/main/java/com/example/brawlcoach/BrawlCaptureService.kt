@@ -1,6 +1,7 @@
 
 package com.example.brawlcoach
 
+import android.app.Activity
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -47,13 +48,13 @@ class BrawlCaptureService : Service() {
 
         val resultCode = intent.getIntExtra(
             EXTRA_RESULT_CODE,
-            RESULT_CANCELED
+            Activity.RESULT_CANCELED
         )
 
         @Suppress("DEPRECATION")
         val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
 
-        if (resultCode != RESULT_OK || data == null) {
+        if (resultCode != Activity.RESULT_OK || data == null) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -123,7 +124,13 @@ class BrawlCaptureService : Service() {
         projection?.registerCallback(
             object : MediaProjection.Callback() {
                 override fun onStop() {
-                    stopCapture()
+                    virtualDisplay?.release()
+                    virtualDisplay = null
+
+                    imageReader?.close()
+                    imageReader = null
+
+                    projection = null
                     stopSelf()
                 }
             },
