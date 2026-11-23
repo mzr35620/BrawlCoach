@@ -330,6 +330,12 @@ class MainActivity : Activity() {
 
                 runOnUiThread {
                     allBrawlers = brawlers
+
+                    // Mise à jour automatique de la base OCR.
+                    BrawlerReferenceDatabase.setBrawlers(
+                        brawlers.map { it.name }
+                    )
+
                     allMaps = maps.filter { !it.disabled }
                     allModes = modes.filter { !it.disabled }
 
