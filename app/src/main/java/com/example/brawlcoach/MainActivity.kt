@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.graphics.Color
+import android.graphics.Bitmap
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -33,6 +34,9 @@ class MainActivity : Activity() {
     private var allMaps: List<BrawlMap> = emptyList()
     private var allModes: List<BrawlGameMode> = emptyList()
     private var allBrawlers: List<Brawler> = emptyList()
+
+    // Images des Brawlers conservées en mémoire
+    private var brawlerImages: Map<String, Bitmap> = emptyMap()
 
     private var selectedMode = ""
     private var selectedMap = ""
@@ -322,10 +326,16 @@ class MainActivity : Activity() {
                 val maps = BrawlApi.getMaps()
                 val modes = BrawlApi.getGameModes()
 
+                // Téléchargement des images des Brawlers
+                val downloadedImages =
+                    BrawlerImageRepository.downloadAll(brawlers)
+
                 runOnUiThread {
                     allBrawlers = brawlers
                     allMaps = maps.filter { !it.disabled }
                     allModes = modes.filter { !it.disabled }
+
+                    brawlerImages = downloadedImages
 
                     val modeNames = allModes.map { it.name }
                         .filter { it.isNotBlank() }
@@ -359,6 +369,7 @@ class MainActivity : Activity() {
                     result.text =
                         "Connexion réussie !\n\n" +
                         "Combattants : ${brawlers.size}\n" +
+                        "Images téléchargées : ${brawlerImages.size}\n" +
                         "Cartes : ${allMaps.size}\n" +
                         "Modes : ${modeNames.size}\n\n" +
                         "Choisis tes combattants."
