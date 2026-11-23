@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.util.Locale
 
 object BrawlOcrAnalyzer {
 
@@ -12,12 +13,12 @@ object BrawlOcrAnalyzer {
         TextRecognizerOptions.DEFAULT_OPTIONS
     )
 
-    /**
-     * Analyse localement une image et conserve uniquement
-     * les noms de Brawlers reconnus dans notre base.
-     *
-     * Aucun texte OCR n'est sauvegardé ou transmis.
-     */
+    private fun normalize(value: String): String {
+        return value.lowercase(Locale.ROOT)
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .trim()
+    }
+
     fun analyze(
         bitmap: Bitmap,
         onResult: (Result<List<String>>) -> Unit
@@ -36,10 +37,28 @@ object BrawlOcrAnalyzer {
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
 
+                val references = BrawlerReferenceDatabase.brawlers
+
                 val recognizedNames = visionText.textBlocks
                     .flatMap { it.lines }
-                    .mapNotNull { line ->
-                        BrawlerReferenceDatabase.find(line.text)?.name
+                    .flatMap { line ->
+
+                        val text = normalize(line.text)
+
+                        references.filter { brawler ->
+
+                            val names = listOf(brawler.name) +
+                                brawler.aliases
+
+                            names.any { candidate ->
+                                val name = normalize(candidate)
+
+                                name.isNotEmpty() &&
+                                    Regex(
+                                        "(^|\\s)${Regex.escape(name)}(\\s|$)"
+                                    ).containsMatchIn(text)
+                            }
+                        }.map { it.name }
                     }
                     .distinct()
 
