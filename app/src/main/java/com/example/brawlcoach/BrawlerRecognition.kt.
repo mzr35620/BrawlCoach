@@ -1,0 +1,115 @@
+
+package com.example.brawlcoach
+
+import android.graphics.Bitmap
+import kotlin.math.abs
+
+data class BrawlerMatch(
+    val name: String,
+    val similarity: Float
+)
+
+object BrawlerRecognition {
+
+    private const val IMAGE_SIZE = 32
+
+    /**
+     * Compare un portrait recadré avec les portraits de référence.
+     * Retourne le meilleur candidat, sans garantir son identification.
+     */
+    fun findBestMatch(
+        capturedPortrait: Bitmap,
+        referenceImages: Map<String, Bitmap>
+    ): BrawlerMatch? {
+
+        if (referenceImages.isEmpty()) return null
+
+        val capturedPixels = normalize(capturedPortrait)
+            ?: return null
+
+        var bestMatch: BrawlerMatch? = null
+
+        for ((name, reference) in referenceImages) {
+            val referencePixels = normalize(reference) ?: continue
+
+            var difference = 0L
+
+            for (i in capturedPixels.indices) {
+                val a = capturedPixels[i]
+                val b = referencePixels[i]
+
+                difference += abs(
+                    ((a shr 16) and 255) -
+                    ((b shr 16) and 255)
+                )
+
+                difference += abs(
+                    ((a shr 8) and 255) -
+                    ((b shr 8) and 255)
+                )
+
+                difference += abs(
+                    (a and 255) - (b and 255)
+                )
+            }
+
+            val maxDifference =
+                capturedPixels.size.toLong() * 3L * 255L
+
+            val similarity =
+                1f - difference.toFloat() / maxDifference
+
+            if (bestMatch == null ||
+                similarity > bestMatch.similarity
+            ) {
+                bestMatch = BrawlerMatch(name, similarity)
+            }
+        }
+
+        return bestMatch
+    }
+
+    private fun normalize(bitmap: Bitmap): IntArray? {
+        return try {
+            val size = minOf(bitmap.width, bitmap.height)
+            if (size <= 0) return null
+
+            val x = (bitmap.width - size) / 2
+            val y = (bitmap.height - size) / 2
+
+            val square = Bitmap.createBitmap(
+                bitmap,
+                x,
+                y,
+                size,
+                size
+            )
+
+            val resized = Bitmap.createScaledBitmap(
+                square,
+                IMAGE_SIZE,
+                IMAGE_SIZE,
+                true
+            )
+
+            val pixels = IntArray(IMAGE_SIZE * IMAGE_SIZE)
+
+            resized.getPixels(
+                pixels,
+                0,
+                IMAGE_SIZE,
+                0,
+                0,
+                IMAGE_SIZE,
+                IMAGE_SIZE
+            )
+
+            if (square !== bitmap) square.recycle()
+            resized.recycle()
+
+            pixels
+        } catch (e: Exception) {
+            null
+        }
+    }
+}
