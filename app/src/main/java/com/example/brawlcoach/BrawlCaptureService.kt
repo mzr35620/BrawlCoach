@@ -9,9 +9,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -19,6 +21,7 @@ import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import java.nio.ByteBuffer
 
 class BrawlCaptureService : Service() {
 
@@ -26,7 +29,8 @@ class BrawlCaptureService : Service() {
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_DATA = "capture_data"
 
-        const val ACTION_STATUS = "com.example.brawlcoach.CAPTURE_STATUS"
+        const val ACTION_STATUS =
+            "com.example.brawlcoach.CAPTURE_STATUS"
         const val EXTRA_STATUS = "status"
 
         private const val CHANNEL_ID = "brawl_capture"
@@ -36,7 +40,11 @@ class BrawlCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+
     private var frameReceived = false
+
+    // Dernière image conservée uniquement en mémoire vive.
+    private var latestFrame: Bitmap? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -77,7 +85,7 @@ class BrawlCaptureService : Service() {
 
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Brawl Coach")
-            .setContentText("Analyse de Brawl Stars active")
+            .setContentText("Capture active")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()
@@ -131,6 +139,8 @@ class BrawlCaptureService : Service() {
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(metrics)
 
+        frameReceived = false
+
         imageReader = ImageReader.newInstance(
             metrics.widthPixels,
             metrics.heightPixels,
@@ -139,15 +149,30 @@ class BrawlCaptureService : Service() {
         )
 
         imageReader?.setOnImageAvailableListener({ reader ->
-            val image = reader.acquireLatestImage()
+            var image: Image? = null
 
-            if (image != null) {
-                image.close()
+            try {
+                image = reader.acquireLatestImage()
 
-                if (!frameReceived) {
-                    frameReceived = true
-                    sendStatus("Image reçue. Capture active.")
+                if (image != null) {
+                    val bitmap = imageToBitmap(image)
+
+                    if (bitmap != null) {
+                        latestFrame?.recycle()
+                        latestFrame = bitmap
+
+                        if (!frameReceived) {
+                            frameReceived = true
+                            sendStatus(
+                                "Image reçue en mémoire. Capture active."
+                            )
+                        }
+                    }
                 }
+            } catch (e: Exception) {
+                sendStatus("Erreur de lecture de l'image.")
+            } finally {
+                image?.close()
             }
         }, null)
 
@@ -163,13 +188,64 @@ class BrawlCaptureService : Service() {
         )
 
         if (virtualDisplay != null) {
-            sendStatus("Capture démarrée. En attente de l'image de Brawl Stars.")
+            sendStatus(
+                "Capture démarrée. En attente de l'image."
+            )
         } else {
             sendStatus("Impossible de démarrer la capture.")
         }
     }
 
+    private fun imageToBitmap(image: Image): Bitmap? {
+        if (image.planes.isEmpty()) return null
+
+        val plane = image.planes[0]
+        val buffer: ByteBuffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+
+        val width = image.width
+        val height = image.height
+
+        if (width <= 0 || height <= 0) return null
+
+        val pixels = IntArray(width * height)
+        val rowPadding = rowStride - pixelStride * width
+
+        if (pixelStride < 4 || rowPadding < 0) return null
+
+        val rowBuffer = ByteArray(rowStride * height)
+        buffer.rewind()
+        buffer.get(rowBuffer, 0, minOf(buffer.remaining(), rowBuffer.size))
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val offset = y * rowStride + x * pixelStride
+
+                val r = rowBuffer[offset].toInt() and 0xFF
+                val g = rowBuffer[offset + 1].toInt() and 0xFF
+                val b = rowBuffer[offset + 2].toInt() and 0xFF
+                val a = rowBuffer[offset + 3].toInt() and 0xFF
+
+                pixels[y * width + x] =
+                    (a shl 24) or
+                    (r shl 16) or
+                    (g shl 8) or b
+            }
+        }
+
+        return Bitmap.createBitmap(
+            pixels,
+            width,
+            height,
+            Bitmap.Config.ARGB_8888
+        )
+    }
+
     private fun releaseResources() {
+        latestFrame?.recycle()
+        latestFrame = null
+
         virtualDisplay?.release()
         virtualDisplay = null
 
