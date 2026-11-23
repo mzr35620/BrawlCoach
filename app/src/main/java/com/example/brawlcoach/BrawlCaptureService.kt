@@ -12,7 +12,6 @@ import android.content.pm.ServiceInfo
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -20,15 +19,15 @@ import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.WindowManager
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class BrawlCaptureService : Service() {
 
     companion object {
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_DATA = "capture_data"
+
+        const val ACTION_STATUS = "com.example.brawlcoach.CAPTURE_STATUS"
+        const val EXTRA_STATUS = "status"
 
         private const val CHANNEL_ID = "brawl_capture"
         private const val NOTIFICATION_ID = 2002
@@ -37,14 +36,17 @@ class BrawlCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
-
-    private val recognizer by lazy {
-        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-    }
-
-    private var isAnalyzing = false
+    private var frameReceived = false
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun sendStatus(message: String) {
+        val intent = Intent(ACTION_STATUS).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_STATUS, message)
+        }
+        sendBroadcast(intent)
+    }
 
     override fun onStartCommand(
         intent: Intent?,
@@ -66,6 +68,7 @@ class BrawlCaptureService : Service() {
         val data = intent.getParcelableExtra<Intent>(EXTRA_DATA)
 
         if (resultCode != Activity.RESULT_OK || data == null) {
+            sendStatus("Autorisation de capture invalide.")
             stopSelf()
             return START_NOT_STICKY
         }
@@ -95,9 +98,22 @@ class BrawlCaptureService : Service() {
             ) as MediaProjectionManager
 
             projection = manager.getMediaProjection(resultCode, data)
+
+            projection?.registerCallback(
+                object : MediaProjection.Callback() {
+                    override fun onStop() {
+                        releaseResources()
+                        sendStatus("Capture arrêtée.")
+                        stopSelf()
+                    }
+                },
+                null
+            )
+
             startCapture()
 
         } catch (e: Exception) {
+            sendStatus("Erreur de capture : ${e.message}")
             stopCapture()
             stopSelf()
         }
@@ -115,13 +131,9 @@ class BrawlCaptureService : Service() {
         @Suppress("DEPRECATION")
         windowManager.defaultDisplay.getRealMetrics(metrics)
 
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
-
         imageReader = ImageReader.newInstance(
-            width,
-            height,
+            metrics.widthPixels,
+            metrics.heightPixels,
             PixelFormat.RGBA_8888,
             2
         )
@@ -130,71 +142,48 @@ class BrawlCaptureService : Service() {
             val image = reader.acquireLatestImage()
 
             if (image != null) {
-                analyzeImage(image)
+                image.close()
+
+                if (!frameReceived) {
+                    frameReceived = true
+                    sendStatus("Image reçue. Capture active.")
+                }
             }
         }, null)
 
-        projection?.registerCallback(
-            object : MediaProjection.Callback() {
-                override fun onStop() {
-                    stopCapture()
-                    stopSelf()
-                }
-            },
-            null
-        )
-
         virtualDisplay = projection?.createVirtualDisplay(
             "BrawlCoachCapture",
-            width,
-            height,
-            density,
+            metrics.widthPixels,
+            metrics.heightPixels,
+            metrics.densityDpi,
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader?.surface,
             null,
             null
         )
+
+        if (virtualDisplay != null) {
+            sendStatus("Capture démarrée. En attente de l'image de Brawl Stars.")
+        } else {
+            sendStatus("Impossible de démarrer la capture.")
+        }
     }
 
-    private fun analyzeImage(image: Image) {
-        if (isAnalyzing) {
-            image.close()
-            return
-        }
+    private fun releaseResources() {
+        virtualDisplay?.release()
+        virtualDisplay = null
 
-        isAnalyzing = true
+        imageReader?.setOnImageAvailableListener(null, null)
+        imageReader?.close()
+        imageReader = null
+    }
 
-        try {
-            val inputImage = InputImage.fromMediaImage(
-                image,
-                0
-            )
+    private fun stopCapture() {
+        releaseResources()
 
-            recognizer.process(inputImage)
-                .addOnSuccessListener { visionText ->
-                    // Résultat OCR disponible.
-                    // L'identification des Brawlers sera ajoutée ensuite.
-                    android.util.Log.d(
-                        "BrawlCoach",
-                        "Texte détecté : ${visionText.text}"
-                    )
-                }
-                .addOnFailureListener { error ->
-                    android.util.Log.e(
-                        "BrawlCoach",
-                        "Erreur OCR",
-                        error
-                    )
-                }
-                .addOnCompleteListener {
-                    image.close()
-                    isAnalyzing = false
-                }
-
-        } catch (e: Exception) {
-            image.close()
-            isAnalyzing = false
-        }
+        val currentProjection = projection
+        projection = null
+        currentProjection?.stop()
     }
 
     private fun createNotificationChannel() {
@@ -205,29 +194,14 @@ class BrawlCaptureService : Service() {
                 NotificationManager.IMPORTANCE_LOW
             )
 
-            val manager = getSystemService(
+            getSystemService(
                 NotificationManager::class.java
-            )
-
-            manager.createNotificationChannel(channel)
+            ).createNotificationChannel(channel)
         }
-    }
-
-    private fun stopCapture() {
-        virtualDisplay?.release()
-        virtualDisplay = null
-
-        imageReader?.setOnImageAvailableListener(null, null)
-        imageReader?.close()
-        imageReader = null
-
-        projection?.stop()
-        projection = null
     }
 
     override fun onDestroy() {
         stopCapture()
-        recognizer.close()
         super.onDestroy()
     }
 }
