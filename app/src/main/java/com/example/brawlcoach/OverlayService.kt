@@ -169,12 +169,6 @@ class OverlayService : Service() {
             setBackgroundColor(Color.rgb(65, 70, 100))
         }
 
-        val info = makeText(
-            "En attente des images de capture...",
-            14f,
-            Color.LTGRAY
-        )
-
         val footer = makeText(
             "BRAWL COACH • VERSION 2",
             10f,
@@ -191,7 +185,6 @@ class OverlayService : Service() {
             }
         )
 
-        body?.addView(info)
         body?.addView(footer)
 
         root.addView(header)
