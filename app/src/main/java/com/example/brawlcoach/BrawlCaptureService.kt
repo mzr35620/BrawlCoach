@@ -19,6 +19,7 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import java.nio.ByteBuffer
@@ -35,6 +36,7 @@ class BrawlCaptureService : Service() {
 
         private const val CHANNEL_ID = "brawl_capture"
         private const val NOTIFICATION_ID = 2002
+        private const val OCR_INTERVAL_MS = 1200L
     }
 
     private var projection: MediaProjection? = null
@@ -42,9 +44,9 @@ class BrawlCaptureService : Service() {
     private var imageReader: ImageReader? = null
 
     private var frameReceived = false
-
-    // Dernière image conservée uniquement en mémoire vive.
-    private var latestFrame: Bitmap? = null
+    private var ocrInProgress = false
+    private var captureActive = false
+    private var lastOcrTime = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -140,6 +142,9 @@ class BrawlCaptureService : Service() {
         windowManager.defaultDisplay.getRealMetrics(metrics)
 
         frameReceived = false
+        captureActive = true
+        ocrInProgress = false
+        lastOcrTime = 0L
 
         imageReader = ImageReader.newInstance(
             metrics.widthPixels,
@@ -154,19 +159,16 @@ class BrawlCaptureService : Service() {
             try {
                 image = reader.acquireLatestImage()
 
-                if (image != null) {
+                if (image != null && captureActive) {
                     val bitmap = imageToBitmap(image)
 
                     if (bitmap != null) {
-                        latestFrame?.recycle()
-                        latestFrame = bitmap
-
                         if (!frameReceived) {
                             frameReceived = true
-                            sendStatus(
-                                "Image reçue en mémoire. Capture active."
-                            )
+                            sendStatus("Image reçue. Analyse locale active.")
                         }
+
+                        analyzeFrame(bitmap)
                     }
                 }
             } catch (e: Exception) {
@@ -188,11 +190,47 @@ class BrawlCaptureService : Service() {
         )
 
         if (virtualDisplay != null) {
-            sendStatus(
-                "Capture démarrée. En attente de l'image."
-            )
+            sendStatus("Capture démarrée. En attente de l'image.")
         } else {
             sendStatus("Impossible de démarrer la capture.")
+        }
+    }
+
+    private fun analyzeFrame(bitmap: Bitmap) {
+        val now = SystemClock.elapsedRealtime()
+
+        if (!captureActive ||
+            ocrInProgress ||
+            now - lastOcrTime < OCR_INTERVAL_MS
+        ) {
+            bitmap.recycle()
+            return
+        }
+
+        ocrInProgress = true
+        lastOcrTime = now
+
+        BrawlOcrAnalyzer.analyze(bitmap) { result ->
+
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+
+            ocrInProgress = false
+
+            if (!captureActive) return@analyze
+
+            result.onSuccess { names ->
+                if (names.isNotEmpty()) {
+                    sendStatus(
+                        "Brawlers détectés : ${names.joinToString(", ")}"
+                    )
+                }
+            }
+
+            result.onFailure {
+                sendStatus("Analyse OCR indisponible.")
+            }
         }
     }
 
@@ -216,7 +254,11 @@ class BrawlCaptureService : Service() {
 
         val rowBuffer = ByteArray(rowStride * height)
         buffer.rewind()
-        buffer.get(rowBuffer, 0, minOf(buffer.remaining(), rowBuffer.size))
+        buffer.get(
+            rowBuffer,
+            0,
+            minOf(buffer.remaining(), rowBuffer.size)
+        )
 
         for (y in 0 until height) {
             for (x in 0 until width) {
@@ -243,8 +285,7 @@ class BrawlCaptureService : Service() {
     }
 
     private fun releaseResources() {
-        latestFrame?.recycle()
-        latestFrame = null
+        captureActive = false
 
         virtualDisplay?.release()
         virtualDisplay = null
