@@ -35,7 +35,6 @@ class MainActivity : Activity() {
     private var allModes: List<BrawlGameMode> = emptyList()
     private var allBrawlers: List<Brawler> = emptyList()
 
-    // Images des Brawlers conservées en mémoire
     private var brawlerImages: Map<String, Bitmap> = emptyMap()
 
     private var selectedMode = ""
@@ -336,6 +335,9 @@ class MainActivity : Activity() {
 
                     brawlerImages = downloadedImages
 
+                    // Partage des portraits avec le moteur de reconnaissance.
+                    BrawlerImageStore.setImages(downloadedImages)
+
                     val modeNames = allModes.map { it.name }
                         .filter { it.isNotBlank() }
                         .distinct()
@@ -567,7 +569,6 @@ class MainActivity : Activity() {
         result.text = message
     }
 
-    // Résumé avec compteur des portraits téléchargés
     private fun updateSummary() {
         result.text =
             "MODE : ${selectedMode.ifBlank { "Non choisi" }}\n" +
