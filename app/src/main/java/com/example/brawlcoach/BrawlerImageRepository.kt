@@ -62,8 +62,9 @@ object BrawlerImageRepository {
 
             for (task in tasks) {
                 val result = task.get()
-                if (result != null) {
-                    images[result.first] = result.second
+
+                result?.second?.let {
+                    images[result.first] = it
                 }
             }
 
