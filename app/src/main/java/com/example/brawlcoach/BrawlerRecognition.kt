@@ -1,3 +1,4 @@
+
 package com.example.brawlcoach
 
 data class BrawlerRecognition(
@@ -7,9 +8,28 @@ data class BrawlerRecognition(
 
 object BrawlerRecognitionEngine {
 
+    // À utiliser lorsque le système OCR aura détecté des noms.
+    fun recognizeDetectedNames(
+        detectedNames: List<Pair<String, Float>>
+    ): List<BrawlerRecognition> {
+
+        return detectedNames.mapNotNull { detected ->
+
+            val reference = BrawlerReferenceDatabase.find(
+                detected.first
+            )
+
+            reference?.let {
+                BrawlerRecognition(
+                    name = it.name,
+                    confidence = detected.second.coerceIn(0f, 1f)
+                )
+            }
+        }.distinctBy { it.name }
+    }
+
+    // Compatibilité avec l'ancienne fonction.
     fun recognize(): List<BrawlerRecognition> {
-        // Reconnaissance à implémenter.
-        // Aucune image n'est capturée ou analysée ici.
         return emptyList()
     }
 }
