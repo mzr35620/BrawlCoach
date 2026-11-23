@@ -1,3 +1,4 @@
+
 package com.example.brawlcoach
 
 data class BrawlerReference(
@@ -7,7 +8,8 @@ data class BrawlerReference(
 
 object BrawlerReferenceDatabase {
 
-    val brawlers = listOf(
+    @Volatile
+    private var currentBrawlers = listOf(
         BrawlerReference("Shelly"),
         BrawlerReference("Colt"),
         BrawlerReference("Bull"),
@@ -59,11 +61,24 @@ object BrawlerReferenceDatabase {
         BrawlerReference("Lumi")
     )
 
+    val brawlers: List<BrawlerReference>
+        get() = currentBrawlers
+
+    fun setBrawlers(names: List<String>) {
+        if (names.isEmpty()) return
+
+        currentBrawlers = names
+            .distinctBy { it.trim().lowercase() }
+            .map { BrawlerReference(it.trim()) }
+    }
+
     fun find(name: String): BrawlerReference? {
-        return brawlers.firstOrNull {
-            it.name.equals(name.trim(), ignoreCase = true) ||
+        val search = name.trim()
+
+        return currentBrawlers.firstOrNull {
+            it.name.equals(search, ignoreCase = true) ||
             it.aliases.any { alias ->
-                alias.equals(name.trim(), ignoreCase = true)
+                alias.equals(search, ignoreCase = true)
             }
         }
     }
