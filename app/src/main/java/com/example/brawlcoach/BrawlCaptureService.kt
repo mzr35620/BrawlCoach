@@ -225,6 +225,8 @@ class BrawlCaptureService : Service() {
                     sendStatus(
                         "Brawlers détectés : ${names.joinToString(", ")}"
                     )
+                } else {
+                    sendStatus("Analyse effectuée : aucun nom reconnu.")
                 }
             }
 
