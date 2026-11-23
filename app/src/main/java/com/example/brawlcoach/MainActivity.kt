@@ -326,7 +326,6 @@ class MainActivity : Activity() {
                 val maps = BrawlApi.getMaps()
                 val modes = BrawlApi.getGameModes()
 
-                // Téléchargement des images des Brawlers
                 val downloadedImages =
                     BrawlerImageRepository.downloadAll(brawlers)
 
@@ -568,10 +567,13 @@ class MainActivity : Activity() {
         result.text = message
     }
 
+    // Résumé avec compteur des portraits téléchargés
     private fun updateSummary() {
         result.text =
             "MODE : ${selectedMode.ifBlank { "Non choisi" }}\n" +
             "CARTE : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
+            "PORTRAITS DES BRAWLERS\n" +
+            "Images disponibles : ${brawlerImages.size} / ${allBrawlers.size}\n\n" +
             "TON ÉQUIPE\n" +
             teamChoices.mapIndexedNotNull { index, name ->
                 if (name == "Non choisi") null
