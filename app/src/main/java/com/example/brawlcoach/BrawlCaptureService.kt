@@ -9,8 +9,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -18,6 +20,9 @@ import android.os.Build
 import android.os.IBinder
 import android.util.DisplayMetrics
 import android.view.WindowManager
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class BrawlCaptureService : Service() {
 
@@ -32,6 +37,12 @@ class BrawlCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
+
+    private val recognizer by lazy {
+        TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    }
+
+    private var isAnalyzing = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -63,7 +74,7 @@ class BrawlCaptureService : Service() {
 
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Brawl Coach")
-            .setContentText("Capture de Brawl Stars active")
+            .setContentText("Analyse de Brawl Stars active")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()
@@ -84,7 +95,6 @@ class BrawlCaptureService : Service() {
             ) as MediaProjectionManager
 
             projection = manager.getMediaProjection(resultCode, data)
-
             startCapture()
 
         } catch (e: Exception) {
@@ -112,25 +122,22 @@ class BrawlCaptureService : Service() {
         imageReader = ImageReader.newInstance(
             width,
             height,
-            android.graphics.PixelFormat.RGBA_8888,
+            PixelFormat.RGBA_8888,
             2
         )
 
         imageReader?.setOnImageAvailableListener({ reader ->
             val image = reader.acquireLatestImage()
-            image?.close()
+
+            if (image != null) {
+                analyzeImage(image)
+            }
         }, null)
 
         projection?.registerCallback(
             object : MediaProjection.Callback() {
                 override fun onStop() {
-                    virtualDisplay?.release()
-                    virtualDisplay = null
-
-                    imageReader?.close()
-                    imageReader = null
-
-                    projection = null
+                    stopCapture()
                     stopSelf()
                 }
             },
@@ -147,6 +154,47 @@ class BrawlCaptureService : Service() {
             null,
             null
         )
+    }
+
+    private fun analyzeImage(image: Image) {
+        if (isAnalyzing) {
+            image.close()
+            return
+        }
+
+        isAnalyzing = true
+
+        try {
+            val inputImage = InputImage.fromMediaImage(
+                image,
+                0
+            )
+
+            recognizer.process(inputImage)
+                .addOnSuccessListener { visionText ->
+                    // Résultat OCR disponible.
+                    // L'identification des Brawlers sera ajoutée ensuite.
+                    android.util.Log.d(
+                        "BrawlCoach",
+                        "Texte détecté : ${visionText.text}"
+                    )
+                }
+                .addOnFailureListener { error ->
+                    android.util.Log.e(
+                        "BrawlCoach",
+                        "Erreur OCR",
+                        error
+                    )
+                }
+                .addOnCompleteListener {
+                    image.close()
+                    isAnalyzing = false
+                }
+
+        } catch (e: Exception) {
+            image.close()
+            isAnalyzing = false
+        }
     }
 
     private fun createNotificationChannel() {
@@ -169,6 +217,7 @@ class BrawlCaptureService : Service() {
         virtualDisplay?.release()
         virtualDisplay = null
 
+        imageReader?.setOnImageAvailableListener(null, null)
         imageReader?.close()
         imageReader = null
 
@@ -178,6 +227,7 @@ class BrawlCaptureService : Service() {
 
     override fun onDestroy() {
         stopCapture()
+        recognizer.close()
         super.onDestroy()
     }
 }
