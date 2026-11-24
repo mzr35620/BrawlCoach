@@ -23,13 +23,15 @@ object BrawlerImageMatcher {
             return null
         }
 
+        var square: Bitmap? = null
+
         return try {
             val side = minOf(source.width, source.height)
 
             val left = (source.width - side) / 2
             val top = (source.height - side) / 2
 
-            val square = Bitmap.createBitmap(
+            square = Bitmap.createBitmap(
                 source,
                 left,
                 top,
@@ -37,21 +39,29 @@ object BrawlerImageMatcher {
                 side
             )
 
-            try {
-                Bitmap.createScaledBitmap(
-                    square,
-                    SAMPLE_SIZE,
-                    SAMPLE_SIZE,
-                    true
-                )
-            } finally {
-                if (square !== source && !square.isRecycled) {
-                    square.recycle()
-                }
+            val scaled = Bitmap.createScaledBitmap(
+                square,
+                SAMPLE_SIZE,
+                SAMPLE_SIZE,
+                true
+            )
+
+            // Garantit un bitmap indépendant avant de recycler square.
+            if (scaled === square) {
+                Bitmap.createBitmap(scaled)
+            } else {
+                scaled
             }
 
         } catch (e: Exception) {
             null
+
+        } finally {
+            square?.let {
+                if (it !== source && !it.isRecycled) {
+                    it.recycle()
+                }
+            }
         }
     }
 
@@ -110,39 +120,30 @@ object BrawlerImageMatcher {
                     val referenceColor = referencePixels[index]
 
                     colorDifference +=
-                        abs(
-                            Color.red(capturedColor) -
-                                Color.red(referenceColor)
-                        ) +
-                        abs(
-                            Color.green(capturedColor) -
-                                Color.green(referenceColor)
-                        ) +
-                        abs(
-                            Color.blue(capturedColor) -
-                                Color.blue(referenceColor)
-                        )
+                        abs(Color.red(capturedColor) -
+                            Color.red(referenceColor)) +
+                        abs(Color.green(capturedColor) -
+                            Color.green(referenceColor)) +
+                        abs(Color.blue(capturedColor) -
+                            Color.blue(referenceColor))
 
                     if (x < SAMPLE_SIZE - 1 &&
                         y < SAMPLE_SIZE - 1
                     ) {
-
                         val right = index + 1
                         val bottom = index + SAMPLE_SIZE
 
-                        val capturedGradient =
-                            gradient(
-                                capturedPixels[index],
-                                capturedPixels[right],
-                                capturedPixels[bottom]
-                            )
+                        val capturedGradient = gradient(
+                            capturedPixels[index],
+                            capturedPixels[right],
+                            capturedPixels[bottom]
+                        )
 
-                        val referenceGradient =
-                            gradient(
-                                referencePixels[index],
-                                referencePixels[right],
-                                referencePixels[bottom]
-                            )
+                        val referenceGradient = gradient(
+                            referencePixels[index],
+                            referencePixels[right],
+                            referencePixels[bottom]
+                        )
 
                         edgeDifference += abs(
                             capturedGradient - referenceGradient
