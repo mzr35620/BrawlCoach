@@ -48,12 +48,12 @@ class BrawlCaptureService : Service() {
     private var frameReceived = false
 
     @Volatile
-    private var ocrInProgress = false
-
-    @Volatile
     private var captureActive = false
 
+    private var ocrInProgress = false
     private var lastOcrTime = 0L
+
+    private val frameLock = Any()
 
     private val analysisExecutor =
         Executors.newSingleThreadExecutor()
@@ -65,7 +65,35 @@ class BrawlCaptureService : Service() {
             setPackage(packageName)
             putExtra(EXTRA_STATUS, message)
         }
+
         sendBroadcast(intent)
+    }
+
+    private fun tryStartAnalysis(): Boolean =
+        synchronized(frameLock) {
+
+            val now = SystemClock.elapsedRealtime()
+
+            if (!captureActive ||
+                ocrInProgress ||
+                now - lastOcrTime < OCR_INTERVAL_MS
+            ) {
+                false
+            } else {
+                ocrInProgress = true
+                lastOcrTime = now
+                true
+            }
+        }
+
+    private fun finishAnalysis(bitmap: Bitmap?) {
+        if (bitmap != null && !bitmap.isRecycled) {
+            bitmap.recycle()
+        }
+
+        synchronized(frameLock) {
+            ocrInProgress = false
+        }
     }
 
     override fun onStartCommand(
@@ -153,8 +181,11 @@ class BrawlCaptureService : Service() {
 
         frameReceived = false
         captureActive = true
-        ocrInProgress = false
-        lastOcrTime = 0L
+
+        synchronized(frameLock) {
+            ocrInProgress = false
+            lastOcrTime = 0L
+        }
 
         imageReader = ImageReader.newInstance(
             metrics.widthPixels,
@@ -164,30 +195,43 @@ class BrawlCaptureService : Service() {
         )
 
         imageReader?.setOnImageAvailableListener({ reader ->
+
             var image: Image? = null
 
             try {
                 image = reader.acquireLatestImage()
 
                 if (image != null && captureActive) {
-                    val bitmap = imageToBitmap(image)
 
-                    if (bitmap != null) {
-                        if (!frameReceived) {
-                            frameReceived = true
-                            sendStatus(
-                                "Image reçue. Analyse locale active."
-                            )
+                    // Vérifie le délai AVANT la conversion Bitmap.
+                    if (tryStartAnalysis()) {
+
+                        val bitmap = imageToBitmap(image)
+
+                        if (bitmap != null) {
+
+                            if (!frameReceived) {
+                                frameReceived = true
+                                sendStatus(
+                                    "Image reçue. Analyse locale active."
+                                )
+                            }
+
+                            analyzeFrame(bitmap)
+
+                        } else {
+                            finishAnalysis(null)
                         }
-
-                        analyzeFrame(bitmap)
                     }
                 }
+
             } catch (e: Exception) {
+                finishAnalysis(null)
                 sendStatus("Erreur de lecture de l'image.")
             } finally {
                 image?.close()
             }
+
         }, null)
 
         virtualDisplay = projection?.createVirtualDisplay(
@@ -209,92 +253,89 @@ class BrawlCaptureService : Service() {
     }
 
     private fun analyzeFrame(bitmap: Bitmap) {
-        val now = SystemClock.elapsedRealtime()
 
-        if (!captureActive ||
-            ocrInProgress ||
-            now - lastOcrTime < OCR_INTERVAL_MS
-        ) {
-            bitmap.recycle()
-            return
-        }
+        try {
+            analysisExecutor.execute {
 
-        ocrInProgress = true
-        lastOcrTime = now
+                try {
+                    // Analyse locale des zones de portraits.
+                    val draftResults =
+                        BrawlDraftAnalyzer.analyze(bitmap)
 
-        analysisExecutor.execute {
+                    BrawlDraftResultStore.update(draftResults)
 
-            try {
-                // Recherche des portraits dans les zones de classé.
-                val draftResults =
-                    BrawlDraftAnalyzer.analyze(bitmap)
+                    // OCR local sur la même image.
+                    BrawlOcrAnalyzer.analyze(bitmap) { result ->
 
-                // Transmission des résultats à MainActivity.
-                BrawlDraftResultStore.update(draftResults)
-
-                // Analyse OCR locale de la même capture.
-                BrawlOcrAnalyzer.analyze(bitmap) { result ->
-
-                    if (!bitmap.isRecycled) {
-                        bitmap.recycle()
-                    }
-
-                    ocrInProgress = false
-
-                    if (!captureActive) {
-                        return@analyze
-                    }
-
-                    val draftMessage = draftResults.joinToString(
-                        separator = " | "
-                    ) { slot ->
-                        val score =
-                            (slot.confidence * 100).toInt()
-
-                        "${slot.slot}: ${slot.brawlerName} ($score%)"
-                    }
-
-                    val ocrMessage = result.fold(
-                        onSuccess = { names ->
-                            if (names.isEmpty()) {
-                                "OCR : aucun nom reconnu"
-                            } else {
-                                "OCR : ${names.joinToString(", ")}"
+                        try {
+                            if (!captureActive) {
+                                return@analyze
                             }
-                        },
-                        onFailure = {
-                            "OCR indisponible"
+
+                            val draftMessage =
+                                draftResults.joinToString(
+                                    separator = " | "
+                                ) { slot ->
+
+                                    val score =
+                                        (slot.confidence * 100).toInt()
+
+                                    "${slot.slot}: " +
+                                        "${slot.brawlerName} " +
+                                        "($score%)"
+                                }
+
+                            val ocrMessage = result.fold(
+                                onSuccess = { names ->
+                                    if (names.isEmpty()) {
+                                        "OCR : aucun nom reconnu"
+                                    } else {
+                                        "OCR : ${names.joinToString(", ")}"
+                                    }
+                                },
+                                onFailure = {
+                                    "OCR indisponible"
+                                }
+                            )
+
+                            sendStatus(
+                                if (draftMessage.isNotEmpty()) {
+                                    "$draftMessage | $ocrMessage"
+                                } else {
+                                    "Zones de portraits non détectées | " +
+                                        ocrMessage
+                                }
+                            )
+
+                        } finally {
+                            finishAnalysis(bitmap)
                         }
-                    )
+                    }
 
-                    sendStatus(
-                        if (draftMessage.isNotEmpty()) {
-                            "$draftMessage | $ocrMessage"
-                        } else {
-                            "Zones de portraits non détectées | $ocrMessage"
-                        }
-                    )
-                }
+                } catch (e: Exception) {
+                    finishAnalysis(bitmap)
 
-            } catch (e: Exception) {
-                if (!bitmap.isRecycled) {
-                    bitmap.recycle()
-                }
-
-                ocrInProgress = false
-
-                if (captureActive) {
-                    sendStatus("Erreur pendant l'analyse des portraits.")
+                    if (captureActive) {
+                        sendStatus(
+                            "Erreur pendant l'analyse des portraits."
+                        )
+                    }
                 }
             }
+
+        } catch (e: Exception) {
+            finishAnalysis(bitmap)
+            sendStatus("Impossible de lancer l'analyse.")
         }
     }
 
     private fun imageToBitmap(image: Image): Bitmap? {
+
         if (image.planes.isEmpty()) return null
 
         val plane = image.planes[0]
         val buffer: ByteBuffer = plane.buffer
+
         val pixelStride = plane.pixelStride
         val rowStride = plane.rowStride
 
@@ -309,6 +350,7 @@ class BrawlCaptureService : Service() {
         if (pixelStride < 4 || rowPadding < 0) return null
 
         val rowBuffer = ByteArray(rowStride * height)
+
         buffer.rewind()
         buffer.get(
             rowBuffer,
@@ -318,6 +360,7 @@ class BrawlCaptureService : Service() {
 
         for (y in 0 until height) {
             for (x in 0 until width) {
+
                 val offset = y * rowStride + x * pixelStride
 
                 val r = rowBuffer[offset].toInt() and 0xFF
@@ -361,6 +404,7 @@ class BrawlCaptureService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "Capture Brawl Coach",
