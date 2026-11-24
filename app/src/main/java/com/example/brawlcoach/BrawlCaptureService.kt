@@ -229,6 +229,9 @@ class BrawlCaptureService : Service() {
                 val draftResults =
                     BrawlDraftAnalyzer.analyze(bitmap)
 
+                // Transmission des résultats à MainActivity.
+                BrawlDraftResultStore.update(draftResults)
+
                 // Analyse OCR locale de la même capture.
                 BrawlOcrAnalyzer.analyze(bitmap) { result ->
 
