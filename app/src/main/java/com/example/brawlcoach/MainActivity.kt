@@ -87,7 +87,10 @@ class MainActivity : Activity() {
                     )
                 } else {
                     startService(
-                        Intent(this@MainActivity, OverlayService::class.java)
+                        Intent(
+                            this@MainActivity,
+                            OverlayService::class.java
+                        )
                     )
                 }
             }
@@ -115,7 +118,9 @@ class MainActivity : Activity() {
 
         loadButton = Button(this).apply {
             text = "Charger les données BrawlAPI"
-            setOnClickListener { loadBrawlData() }
+            setOnClickListener {
+                loadBrawlData()
+            }
         }
 
         modeSpinner = Spinner(this)
@@ -138,7 +143,9 @@ class MainActivity : Activity() {
 
         recommendButton = Button(this).apply {
             text = "TROUVER LES 3 MEILLEURS COMBATTANTS"
-            setOnClickListener { recommendBrawlers() }
+            setOnClickListener {
+                recommendBrawlers()
+            }
             isEnabled = false
         }
 
@@ -157,7 +164,9 @@ class MainActivity : Activity() {
         content.addView(makeLabel("TON ÉQUIPE"))
 
         repeat(3) { index ->
-            content.addView(makeLabel("Coéquipier ${index + 1}"))
+            content.addView(
+                makeLabel("Coéquipier ${index + 1}")
+            )
 
             val button = Button(this).apply {
                 text = "Non choisi"
@@ -173,7 +182,9 @@ class MainActivity : Activity() {
         content.addView(makeLabel("ÉQUIPE ADVERSE"))
 
         repeat(3) { index ->
-            content.addView(makeLabel("Adversaire ${index + 1}"))
+            content.addView(
+                makeLabel("Adversaire ${index + 1}")
+            )
 
             val button = Button(this).apply {
                 text = "Non choisi"
@@ -310,7 +321,9 @@ class MainActivity : Activity() {
 
                 view.setTextColor(Color.WHITE)
                 view.textSize = 18f
-                view.setBackgroundColor(Color.rgb(31, 41, 55))
+                view.setBackgroundColor(
+                    Color.rgb(31, 41, 55)
+                )
                 view.setPadding(20, 16, 20, 16)
 
                 return view
@@ -348,9 +361,12 @@ class MainActivity : Activity() {
 
                     brawlerImages = downloadedImages
 
-                    BrawlerImageStore.setImages(downloadedImages)
+                    BrawlerImageStore.setImages(
+                        downloadedImages
+                    )
 
-                    val modeNames = allModes.map { it.name }
+                    val modeNames = allModes
+                        .map { it.name }
                         .filter { it.isNotBlank() }
                         .distinct()
 
@@ -408,7 +424,8 @@ class MainActivity : Activity() {
             return
         }
 
-        val detectedResults = BrawlDraftResultStore.getResults()
+        val detectedResults =
+            BrawlDraftResultStore.getResults()
 
         if (detectedResults.isEmpty()) {
             result.text =
@@ -471,7 +488,10 @@ class MainActivity : Activity() {
             "Tu peux maintenant lancer les recommandations."
     }
 
-    private fun showBrawlerPicker(index: Int, isTeam: Boolean) {
+    private fun showBrawlerPicker(
+        index: Int,
+        isTeam: Boolean
+    ) {
         if (allBrawlers.isEmpty()) {
             Toast.makeText(
                 this,
@@ -482,12 +502,17 @@ class MainActivity : Activity() {
         }
 
         val names = arrayOf("Non choisi") +
-            allBrawlers.map { it.name }.distinct().toTypedArray()
+            allBrawlers.map { it.name }
+                .distinct()
+                .toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle(
-                if (isTeam) "Choisir un coéquipier"
-                else "Choisir un adversaire"
+                if (isTeam) {
+                    "Choisir un coéquipier"
+                } else {
+                    "Choisir un adversaire"
+                }
             )
             .setItems(names) { _, position ->
 
@@ -509,8 +534,12 @@ class MainActivity : Activity() {
 
     private fun updateMaps(modeName: String) {
         val mapNames = allMaps.filter {
-            it.gameMode.equals(modeName, ignoreCase = true)
-        }.map { it.name }.filter { it.isNotBlank() }
+            it.gameMode.equals(
+                modeName,
+                ignoreCase = true
+            )
+        }.map { it.name }
+            .filter { it.isNotBlank() }
 
         val values = if (mapNames.isEmpty()) {
             listOf("Aucune carte disponible")
@@ -518,7 +547,8 @@ class MainActivity : Activity() {
             mapNames
         }
 
-        mapSpinner.adapter = createSpinnerAdapter(values)
+        mapSpinner.adapter =
+            createSpinnerAdapter(values)
 
         mapSpinner.onItemSelectedListener =
             object : AdapterView.OnItemSelectedListener {
@@ -529,7 +559,9 @@ class MainActivity : Activity() {
                     position: Int,
                     id: Long
                 ) {
-                    selectedMap = mapNames.getOrElse(position) { "" }
+                    selectedMap =
+                        mapNames.getOrElse(position) { "" }
+
                     updateSummary()
                 }
 
@@ -554,16 +586,26 @@ class MainActivity : Activity() {
             .filter { it != "Non choisi" }
             .mapNotNull { name ->
                 allBrawlers.find {
-                    it.name.equals(name, ignoreCase = true)
-                }?.className?.takeIf { it.isNotBlank() }
+                    it.name.equals(
+                        name,
+                        ignoreCase = true
+                    )
+                }?.className?.takeIf {
+                    it.isNotBlank()
+                }
             }
 
         val enemyClasses = enemyChoices
             .filter { it != "Non choisi" }
             .mapNotNull { name ->
                 allBrawlers.find {
-                    it.name.equals(name, ignoreCase = true)
-                }?.className?.takeIf { it.isNotBlank() }
+                    it.name.equals(
+                        name,
+                        ignoreCase = true
+                    )
+                }?.className?.takeIf {
+                    it.isNotBlank()
+                }
             }
 
         val teamCounts = teamClasses
@@ -578,19 +620,31 @@ class MainActivity : Activity() {
             .filter { it.name !in unavailable }
             .map { brawler ->
 
-                val role = brawler.className.trim().lowercase()
+                val role = brawler.className
+                    .trim()
+                    .lowercase()
 
                 var score = 50
 
                 if (role.isNotBlank()) {
                     val teamCount = teamCounts[role] ?: 0
-                    score += if (teamCount == 0) 20 else -10 * teamCount
+
+                    score += if (teamCount == 0) {
+                        20
+                    } else {
+                        -10 * teamCount
+                    }
+
                     if (teamCount == 0) score += 5
                     if (teamCount >= 2) score -= 10
 
                     val enemyCount = enemyCounts[role] ?: 0
-                    if (enemyCount == 0) score += 8
-                    else score -= 8 * enemyCount
+
+                    if (enemyCount == 0) {
+                        score += 8
+                    } else {
+                        score -= 8 * enemyCount
+                    }
                 }
 
                 Pair(brawler, score)
@@ -604,6 +658,7 @@ class MainActivity : Activity() {
         }
 
         val message = buildString {
+
             append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
 
             recommendations.forEachIndexed { index, pair ->
@@ -612,37 +667,12 @@ class MainActivity : Activity() {
 
                 append("${index + 1}. ${brawler.name}\n")
                 append("Classe : ")
-                append(brawler.className.ifBlank { "Non renseignée" })
+                append(
+                    brawler.className.ifBlank {
+                        "Non renseignée"
+                    }
+                )
                 append("\nScore de composition : $score\n\n")
             }
 
-            append("📊 ANALYSE DE TON ÉQUIPE\n")
-
-            if (teamClasses.isEmpty()) {
-                append("Aucun coéquipier sélectionné.\n")
-            } else {
-                teamCounts.forEach { (role, count) ->
-                    append("$role : $count\n")
-                }
-            }
-
-            append("\n🔎 ANALYSE DES ADVERSAIRES\n")
-
-            if (enemyClasses.isEmpty()) {
-                append("Aucun adversaire reconnu ou sélectionné.\n")
-            } else {
-                enemyCounts.forEach { (role, count) ->
-                    append("$role : $count\n")
-                }
-            }
-
-            append("\nMode : ")
-            append(selectedMode.ifBlank { "Non choisi" })
-            append("\nCarte : ")
-            append(selectedMap.ifBlank { "Non choisie" })
-
-            append("\n\nLe score tient compte de la diversité ")
-            append("de ton équipe et des classes adverses.")
-            append("\nCe calcul est indicatif : les vrais contres ")
-            append("et statistiques de victoire par carte ")
-            append("ne s
+            append("📊 ANALYSE DE TON ÉQ
