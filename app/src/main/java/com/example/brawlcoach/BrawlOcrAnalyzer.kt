@@ -17,6 +17,7 @@ object BrawlOcrAnalyzer {
         return value.lowercase(Locale.ROOT)
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
+            .replace(Regex("\\s+"), " ")
     }
 
     fun analyze(
@@ -41,9 +42,9 @@ object BrawlOcrAnalyzer {
 
                 val recognizedNames = visionText.textBlocks
                     .flatMap { it.lines }
-                    .flatMap { line ->
-
-                        val text = normalize(line.text)
+                    .map { line -> normalize(line.text) }
+                    .filter { it.isNotBlank() }
+                    .flatMap { text ->
 
                         references.filter { brawler ->
 
@@ -53,10 +54,8 @@ object BrawlOcrAnalyzer {
                             names.any { candidate ->
                                 val name = normalize(candidate)
 
-                                name.isNotEmpty() &&
-                                    Regex(
-                                        "(^|\\s)${Regex.escape(name)}(\\s|$)"
-                                    ).containsMatchIn(text)
+                                name.isNotBlank() &&
+                                    text == name
                             }
                         }.map { it.name }
                     }
