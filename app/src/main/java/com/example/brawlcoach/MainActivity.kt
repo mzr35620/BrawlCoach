@@ -675,4 +675,64 @@ class MainActivity : Activity() {
                 append("\nScore de composition : $score\n\n")
             }
 
-            append("📊 ANALYSE DE TON ÉQ
+            
+            append("📊 ANALYSE DE TON ÉQUIPE\n\n")
+
+            val selectedAllies = teamChoices.filter {
+                it != "Non choisi"
+            }
+
+            val selectedEnemies = enemyChoices.filter {
+                it != "Non choisi"
+            }
+
+            append("Coéquipiers sélectionnés : ${selectedAllies.size}/3\n")
+            append("Adversaires renseignés : ${selectedEnemies.size}/3\n\n")
+
+            append("Cette recommandation repose sur la composition ")
+            append("des équipes et les classes des combattants.\n")
+            append("Elle ne représente pas un taux de victoire.")
+        }
+
+        result.text = message
+    }
+
+    private fun updateSummary() {
+        result.text = buildString {
+            append("MODE : ")
+            append(selectedMode.ifBlank { "Non choisi" })
+            append('\n')
+
+            append("CARTE : ")
+            append(selectedMap.ifBlank { "Non choisie" })
+            append("\n\n")
+
+            append("TON ÉQUIPE\n")
+
+            teamChoices.forEachIndexed { index, name ->
+                if (name != "Non choisi") {
+                    append("Coéquipier ${index + 1} : $name\n")
+                }
+            }
+
+            if (teamChoices.all { it == "Non choisi" }) {
+                append("Aucun choix\n")
+            }
+
+            append("\nÉQUIPE ADVERSE\n")
+
+            enemyChoices.forEachIndexed { index, name ->
+                if (name != "Non choisi") {
+                    append("Adversaire ${index + 1} : $name\n")
+                }
+            }
+
+            if (enemyChoices.all { it == "Non choisi" }) {
+                append("Aucun choix\n")
+            }
+
+            append("\nImages disponibles : ${brawlerImages.size}")
+        }
+    }
+}
+
