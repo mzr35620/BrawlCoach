@@ -20,8 +20,8 @@ object BrawlDraftPortraitDetector {
         val bottom: Float
     )
 
-    // Coordonnées proportionnelles à la capture
-    // de sélection en classé fournie.
+    // Coordonnées provisoires de la capture
+    // de sélection en classé.
     private val regions = listOf(
         Region("Allié 1", "Alliés", 0.061f, 0.153f, 0.153f, 0.327f),
         Region("Allié 2", "Alliés", 0.061f, 0.333f, 0.153f, 0.495f),
@@ -41,41 +41,74 @@ object BrawlDraftPortraitDetector {
             return emptyList()
         }
 
-        val ratio = bitmap.width.toFloat() / bitmap.height
+        val ratio =
+            bitmap.width.toFloat() / bitmap.height.toFloat()
 
-        // Évite d'utiliser ces coordonnées sur un écran
-        // dont la disposition est trop différente.
+        // Cette disposition nécessite une capture horizontale.
         if (ratio !in 1.7f..2.2f) {
             return emptyList()
         }
 
-        return regions.mapNotNull { region ->
+        val results = mutableListOf<DraftPortraitCrop>()
+
+        for (region in regions) {
+
+            // Vérifie que les coordonnées sont valides.
+            if (region.left < 0f ||
+                region.top < 0f ||
+                region.right > 1f ||
+                region.bottom > 1f ||
+                region.left >= region.right ||
+                region.top >= region.bottom
+            ) {
+                continue
+            }
 
             val left = (region.left * bitmap.width)
-                .toInt().coerceIn(0, bitmap.width - 1)
+                .toInt()
 
             val top = (region.top * bitmap.height)
-                .toInt().coerceIn(0, bitmap.height - 1)
+                .toInt()
 
             val right = (region.right * bitmap.width)
-                .toInt().coerceIn(left + 1, bitmap.width)
+                .toInt()
 
             val bottom = (region.bottom * bitmap.height)
-                .toInt().coerceIn(top + 1, bitmap.height)
+                .toInt()
 
-            val crop = Bitmap.createBitmap(
-                bitmap,
-                left,
-                top,
-                right - left,
-                bottom - top
-            )
+            // Évite les découpages trop petits ou invalides.
+            if (left < 0 ||
+                top < 0 ||
+                right > bitmap.width ||
+                bottom > bitmap.height ||
+                right <= left ||
+                bottom <= top
+            ) {
+                continue
+            }
 
-            DraftPortraitCrop(
-                slot = region.slot,
-                team = region.team,
-                bitmap = crop
-            )
+            try {
+                val crop = Bitmap.createBitmap(
+                    bitmap,
+                    left,
+                    top,
+                    right - left,
+                    bottom - top
+                )
+
+                results.add(
+                    DraftPortraitCrop(
+                        slot = region.slot,
+                        team = region.team,
+                        bitmap = crop
+                    )
+                )
+
+            } catch (e: IllegalArgumentException) {
+                // Ignore uniquement la zone invalide.
+            }
         }
+
+        return results
     }
 }
