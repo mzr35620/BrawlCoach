@@ -8,19 +8,38 @@ object BrawlerImageStore {
     @Volatile
     private var images: Map<String, Bitmap> = emptyMap()
 
+    @Synchronized
     fun setImages(newImages: Map<String, Bitmap>) {
-        images = newImages.toMap()
+
+        images = newImages.filter { (_, bitmap) ->
+            !bitmap.isRecycled &&
+            bitmap.width > 0 &&
+            bitmap.height > 0
+        }.toMap()
     }
 
     fun getImages(): Map<String, Bitmap> {
-        return images
+        return images.filter { (_, bitmap) ->
+            !bitmap.isRecycled
+        }
     }
 
     fun getImage(name: String): Bitmap? {
-        return images[name]
+        val bitmap = images[name]
+
+        return bitmap?.takeIf {
+            !it.isRecycled &&
+            it.width > 0 &&
+            it.height > 0
+        }
     }
 
     fun count(): Int {
-        return images.size
+        return getImages().size
+    }
+
+    @Synchronized
+    fun clear() {
+        images = emptyMap()
     }
 }
