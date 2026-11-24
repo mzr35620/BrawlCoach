@@ -23,6 +23,7 @@ import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import java.nio.ByteBuffer
+import java.util.concurrent.Executors
 
 class BrawlCaptureService : Service() {
 
@@ -43,10 +44,19 @@ class BrawlCaptureService : Service() {
     private var virtualDisplay: VirtualDisplay? = null
     private var imageReader: ImageReader? = null
 
+    @Volatile
     private var frameReceived = false
+
+    @Volatile
     private var ocrInProgress = false
+
+    @Volatile
     private var captureActive = false
+
     private var lastOcrTime = 0L
+
+    private val analysisExecutor =
+        Executors.newSingleThreadExecutor()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -165,7 +175,9 @@ class BrawlCaptureService : Service() {
                     if (bitmap != null) {
                         if (!frameReceived) {
                             frameReceived = true
-                            sendStatus("Image reçue. Analyse locale active.")
+                            sendStatus(
+                                "Image reçue. Analyse locale active."
+                            )
                         }
 
                         analyzeFrame(bitmap)
@@ -210,28 +222,67 @@ class BrawlCaptureService : Service() {
         ocrInProgress = true
         lastOcrTime = now
 
-        BrawlOcrAnalyzer.analyze(bitmap) { result ->
+        analysisExecutor.execute {
 
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
-            }
+            try {
+                // Recherche des portraits dans les zones de classé.
+                val draftResults =
+                    BrawlDraftAnalyzer.analyze(bitmap)
 
-            ocrInProgress = false
+                // Analyse OCR locale de la même capture.
+                BrawlOcrAnalyzer.analyze(bitmap) { result ->
 
-            if (!captureActive) return@analyze
+                    if (!bitmap.isRecycled) {
+                        bitmap.recycle()
+                    }
 
-            result.onSuccess { names ->
-                if (names.isNotEmpty()) {
-                    sendStatus(
-                        "Brawlers détectés : ${names.joinToString(", ")}"
+                    ocrInProgress = false
+
+                    if (!captureActive) {
+                        return@analyze
+                    }
+
+                    val draftMessage = draftResults.joinToString(
+                        separator = " | "
+                    ) { slot ->
+                        val score =
+                            (slot.confidence * 100).toInt()
+
+                        "${slot.slot}: ${slot.brawlerName} ($score%)"
+                    }
+
+                    val ocrMessage = result.fold(
+                        onSuccess = { names ->
+                            if (names.isEmpty()) {
+                                "OCR : aucun nom reconnu"
+                            } else {
+                                "OCR : ${names.joinToString(", ")}"
+                            }
+                        },
+                        onFailure = {
+                            "OCR indisponible"
+                        }
                     )
-                } else {
-                    sendStatus("Analyse effectuée : aucun nom reconnu.")
-                }
-            }
 
-            result.onFailure {
-                sendStatus("Analyse OCR indisponible.")
+                    sendStatus(
+                        if (draftMessage.isNotEmpty()) {
+                            "$draftMessage | $ocrMessage"
+                        } else {
+                            "Zones de portraits non détectées | $ocrMessage"
+                        }
+                    )
+                }
+
+            } catch (e: Exception) {
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+
+                ocrInProgress = false
+
+                if (captureActive) {
+                    sendStatus("Erreur pendant l'analyse des portraits.")
+                }
             }
         }
     }
@@ -321,6 +372,7 @@ class BrawlCaptureService : Service() {
 
     override fun onDestroy() {
         stopCapture()
+        analysisExecutor.shutdown()
         super.onDestroy()
     }
 }
