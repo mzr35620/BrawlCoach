@@ -20,8 +20,11 @@ object BrawlDraftPortraitDetector {
         val bottom: Float
     )
 
-    // Coordonnées provisoires de la capture
-    // de sélection en classé.
+    private const val MIN_WIDTH = 640
+    private const val MIN_HEIGHT = 360
+
+    // Coordonnées provisoires : à valider sur une capture
+    // réelle de sélection en classé.
     private val regions = listOf(
         Region("Allié 1", "Alliés", 0.061f, 0.153f, 0.153f, 0.327f),
         Region("Allié 2", "Alliés", 0.061f, 0.333f, 0.153f, 0.495f),
@@ -35,8 +38,8 @@ object BrawlDraftPortraitDetector {
     fun extract(bitmap: Bitmap): List<DraftPortraitCrop> {
 
         if (bitmap.isRecycled ||
-            bitmap.width <= 0 ||
-            bitmap.height <= 0
+            bitmap.width < MIN_WIDTH ||
+            bitmap.height < MIN_HEIGHT
         ) {
             return emptyList()
         }
@@ -44,7 +47,7 @@ object BrawlDraftPortraitDetector {
         val ratio =
             bitmap.width.toFloat() / bitmap.height.toFloat()
 
-        // Cette disposition nécessite une capture horizontale.
+        // La disposition actuelle est prévue pour une capture horizontale.
         if (ratio !in 1.7f..2.2f) {
             return emptyList()
         }
@@ -53,7 +56,6 @@ object BrawlDraftPortraitDetector {
 
         for (region in regions) {
 
-            // Vérifie que les coordonnées sont valides.
             if (region.left < 0f ||
                 region.top < 0f ||
                 region.right > 1f ||
@@ -64,19 +66,11 @@ object BrawlDraftPortraitDetector {
                 continue
             }
 
-            val left = (region.left * bitmap.width)
-                .toInt()
+            val left = (region.left * bitmap.width).toInt()
+            val top = (region.top * bitmap.height).toInt()
+            val right = (region.right * bitmap.width).toInt()
+            val bottom = (region.bottom * bitmap.height).toInt()
 
-            val top = (region.top * bitmap.height)
-                .toInt()
-
-            val right = (region.right * bitmap.width)
-                .toInt()
-
-            val bottom = (region.bottom * bitmap.height)
-                .toInt()
-
-            // Évite les découpages trop petits ou invalides.
             if (left < 0 ||
                 top < 0 ||
                 right > bitmap.width ||
