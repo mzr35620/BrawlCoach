@@ -424,8 +424,7 @@ class MainActivity : Activity() {
             return
         }
 
-        val detectedResults =
-            BrawlDraftResultStore.getResults()
+        val detectedResults = BrawlDraftResultStore.getResults()
 
         if (detectedResults.isEmpty()) {
             result.text =
@@ -444,10 +443,7 @@ class MainActivity : Activity() {
             }
 
             val brawler = allBrawlers.firstOrNull {
-                it.name.equals(
-                    detected.brawlerName,
-                    ignoreCase = true
-                )
+                it.name.equals(detected.brawlerName, ignoreCase = true)
             } ?: return@forEach
 
             val slotNumber = Regex("""(\d+)""")
@@ -458,12 +454,9 @@ class MainActivity : Activity() {
 
             val index = slotNumber - 1
 
-            if (index !in 0..2) {
-                return@forEach
-            }
+            if (index !in 0..2) return@forEach
 
             when (detected.team) {
-
                 "Alliés" -> {
                     teamChoices[index] = brawler.name
                     teamButtons[index].text = brawler.name
@@ -480,12 +473,33 @@ class MainActivity : Activity() {
 
         updateSummary()
 
+        val diagnostics = detectedResults
+            .filter { it.team == "Alliés" }
+            .joinToString("\n\n") { detected ->
+
+                val score = (detected.confidence * 100)
+                    .toInt()
+
+                val candidate = detected.bestCandidateName
+                    ?: "Aucun candidat"
+
+                if (detected.brawlerName == "Inconnu") {
+                    "${detected.slot} : Inconnu\n" +
+                    "Meilleur candidat : $candidate\n" +
+                    "Score de ressemblance : $score %"
+                } else {
+                    "${detected.slot} : ${detected.brawlerName}\n" +
+                    "Score de ressemblance : $score %"
+                }
+            }
+
         result.text =
             "RÉCUPÉRATION TERMINÉE\n\n" +
             "Coéquipiers reconnus : $alliesUpdated\n" +
             "Adversaires reconnus : $enemiesUpdated\n\n" +
-            "Les choix inconnus restent inchangés.\n" +
-            "Tu peux maintenant lancer les recommandations."
+            "DIAGNOSTIC DES PORTRAITS\n\n" +
+            diagnostics +
+            "\n\nLes choix adverses masqués restent inconnus."
     }
 
     private fun showBrawlerPicker(
@@ -653,86 +667,4 @@ class MainActivity : Activity() {
             .take(3)
 
         if (recommendations.isEmpty()) {
-            result.text = "Aucune recommandation disponible."
-            return
-        }
-
-        val message = buildString {
-
-            append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
-
-            recommendations.forEachIndexed { index, pair ->
-                val brawler = pair.first
-                val score = pair.second
-
-                append("${index + 1}. ${brawler.name}\n")
-                append("Classe : ")
-                append(
-                    brawler.className.ifBlank {
-                        "Non renseignée"
-                    }
-                )
-                append("\nScore de composition : $score\n\n")
-            }
-
-            
-            append("📊 ANALYSE DE TON ÉQUIPE\n\n")
-
-            val selectedAllies = teamChoices.filter {
-                it != "Non choisi"
-            }
-
-            val selectedEnemies = enemyChoices.filter {
-                it != "Non choisi"
-            }
-
-            append("Coéquipiers sélectionnés : ${selectedAllies.size}/3\n")
-            append("Adversaires renseignés : ${selectedEnemies.size}/3\n\n")
-
-            append("Cette recommandation repose sur la composition ")
-            append("des équipes et les classes des combattants.\n")
-            append("Elle ne représente pas un taux de victoire.")
-        }
-
-        result.text = message
-    }
-
-    private fun updateSummary() {
-        result.text = buildString {
-            append("MODE : ")
-            append(selectedMode.ifBlank { "Non choisi" })
-            append('\n')
-
-            append("CARTE : ")
-            append(selectedMap.ifBlank { "Non choisie" })
-            append("\n\n")
-
-            append("TON ÉQUIPE\n")
-
-            teamChoices.forEachIndexed { index, name ->
-                if (name != "Non choisi") {
-                    append("Coéquipier ${index + 1} : $name\n")
-                }
-            }
-
-            if (teamChoices.all { it == "Non choisi" }) {
-                append("Aucun choix\n")
-            }
-
-            append("\nÉQUIPE ADVERSE\n")
-
-            enemyChoices.forEachIndexed { index, name ->
-                if (name != "Non choisi") {
-                    append("Adversaire ${index + 1} : $name\n")
-                }
-            }
-
-            if (enemyChoices.all { it == "Non choisi" }) {
-                append("Aucun choix\n")
-            }
-
-            append("\nImages disponibles : ${brawlerImages.size}")
-        }
-    }
-}
-
+            result.text = "Aucune recommandation dis
