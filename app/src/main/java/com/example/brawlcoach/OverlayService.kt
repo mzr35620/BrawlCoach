@@ -23,27 +23,41 @@ class OverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var panel: View? = null
     private var body: LinearLayout? = null
+    private var resultsContainer: LinearLayout? = null
     private var params: WindowManager.LayoutParams? = null
     private var statusText: TextView? = null
+
     private var minimized = false
     private var receiverRegistered = false
 
+    private val green = Color.rgb(65, 230, 145)
+    private val white = Color.WHITE
+    private val muted = Color.rgb(170, 180, 195)
+
     private val statusReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == BrawlCaptureService.ACTION_STATUS) {
-                val message = intent.getStringExtra(
-                    BrawlCaptureService.EXTRA_STATUS
-                ) ?: return
 
-                statusText?.text = "●  $message"
+            if (intent?.action != BrawlCaptureService.ACTION_STATUS) {
+                return
             }
+
+            val message = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_STATUS
+            ) ?: return
+
+            statusText?.text = "●  $message"
+
+            // Actualise les combattants après chaque analyse.
+            renderDraftResults()
         }
     }
 
     private fun registerStatusReceiver() {
         if (receiverRegistered) return
 
-        val filter = IntentFilter(BrawlCaptureService.ACTION_STATUS)
+        val filter = IntentFilter(
+            BrawlCaptureService.ACTION_STATUS
+        )
 
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(
@@ -59,7 +73,7 @@ class OverlayService : Service() {
         receiverRegistered = true
     }
 
-    private fun background(
+    private fun makeBackground(
         color: Int,
         radius: Float
     ): GradientDrawable {
@@ -85,31 +99,36 @@ class OverlayService : Service() {
         flags: Int,
         startId: Int
     ): Int {
+
         registerStatusReceiver()
 
         if (panel == null) {
             createPanel()
         }
 
+        renderDraftResults()
+
         return START_NOT_STICKY
     }
 
     private fun createPanel() {
+
         windowManager =
             getSystemService(WINDOW_SERVICE) as WindowManager
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(14, 12, 14, 14)
+
             background = GradientDrawable().apply {
                 colors = intArrayOf(
-                    Color.rgb(24, 29, 49),
-                    Color.rgb(13, 17, 31)
+                    Color.rgb(22, 34, 43),
+                    Color.rgb(12, 20, 29)
                 )
                 orientation =
                     GradientDrawable.Orientation.TOP_BOTTOM
-                cornerRadius = 24f
-                setStroke(2, Color.rgb(124, 77, 255))
+                cornerRadius = 22f
+                setStroke(2, green)
             }
         }
 
@@ -121,19 +140,15 @@ class OverlayService : Service() {
         val dragHandle = TextView(this).apply {
             text = "☰  BRAWL COACH"
             textSize = 15f
-            setTextColor(Color.WHITE)
+            setTextColor(white)
             setPadding(10, 14, 10, 14)
-            background = background(
-                Color.rgb(48, 53, 83),
+            background = makeBackground(
+                Color.rgb(35, 65, 55),
                 14f
             )
         }
 
-        val reduce = makeText(
-            "−",
-            25f,
-            Color.WHITE
-        ).apply {
+        val reduce = makeText("−", 25f, white).apply {
             gravity = Gravity.CENTER
             setPadding(12, 5, 12, 5)
         }
@@ -156,33 +171,40 @@ class OverlayService : Service() {
 
         body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(4, 14, 4, 4)
+            setPadding(4, 12, 4, 4)
         }
 
         statusText = makeText(
             "●  ASSISTANT ACTIF",
-            13f,
-            Color.rgb(100, 240, 170)
-        )
-
-        val separator = View(this).apply {
-            setBackgroundColor(Color.rgb(65, 70, 100))
-        }
-
-        val footer = makeText(
-            "BRAWL COACH • VERSION 2",
-            10f,
-            Color.rgb(150, 155, 180)
+            12f,
+            green
         )
 
         body?.addView(statusText)
 
+        addSeparator()
+
         body?.addView(
-            separator,
-            LinearLayout.LayoutParams(-1, 1).apply {
-                topMargin = 10
-                bottomMargin = 10
-            }
+            makeText("🟢  TON ÉQUIPE", 13f, green)
+        )
+
+        resultsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 6, 0, 6)
+        }
+
+        body?.addView(resultsContainer)
+
+        addSeparator()
+
+        body?.addView(
+            makeText("🔴  ADVERSAIRES", 13f, white)
+        )
+
+        val footer = makeText(
+            "Analyse locale • BRAWL COACH",
+            10f,
+            muted
         )
 
         body?.addView(footer)
@@ -192,6 +214,7 @@ class OverlayService : Service() {
 
         reduce.setOnClickListener {
             minimized = !minimized
+
             body?.visibility =
                 if (minimized) View.GONE else View.VISIBLE
 
@@ -220,7 +243,9 @@ class OverlayService : Service() {
         var touchY = 0f
 
         dragHandle.setOnTouchListener { view, event ->
+
             when (event.action) {
+
                 MotionEvent.ACTION_DOWN -> {
                     startX = params?.x ?: 0
                     startY = params?.y ?: 0
@@ -233,6 +258,7 @@ class OverlayService : Service() {
                     params?.let {
                         it.x =
                             startX + (event.rawX - touchX).toInt()
+
                         it.y =
                             startY + (event.rawY - touchY).toInt()
 
@@ -255,18 +281,136 @@ class OverlayService : Service() {
         windowManager?.addView(root, params)
     }
 
+    private fun addSeparator() {
+
+        val separator = View(this).apply {
+            setBackgroundColor(Color.rgb(65, 85, 80))
+        }
+
+        body?.addView(
+            separator,
+            LinearLayout.LayoutParams(-1, 1).apply {
+                topMargin = 9
+                bottomMargin = 9
+            }
+        )
+    }
+
+    private fun renderDraftResults() {
+
+        val container = resultsContainer ?: return
+
+        container.removeAllViews()
+
+        val results = BrawlDraftResultStore.getResults()
+
+        if (results.isEmpty()) {
+            container.addView(
+                makeText(
+                    "En attente des combattants détectés...",
+                    11f,
+                    muted
+                )
+            )
+            return
+        }
+
+        val allies = results.filter {
+            it.team == "Alliés"
+        }
+
+        val enemies = results.filter {
+            it.team == "Adversaires"
+        }
+
+        allies.forEach { slot ->
+            addResultRow(
+                container,
+                slot,
+                green
+            )
+        }
+
+        if (allies.isEmpty()) {
+            container.addView(
+                makeText("Aucun allié détecté", 11f, muted)
+            )
+        }
+
+        container.addView(
+            makeText(
+                "Adversaires :",
+                11f,
+                muted
+            ).apply {
+                setPadding(0, 8, 0, 4)
+            }
+        )
+
+        enemies.forEach { slot ->
+            addResultRow(
+                container,
+                slot,
+                white
+            )
+        }
+
+        if (enemies.isEmpty()) {
+            container.addView(
+                makeText("En attente", 11f, muted)
+            )
+        }
+    }
+
+    private fun addResultRow(
+        container: LinearLayout,
+        slot: DraftSlotResult,
+        color: Int
+    ) {
+
+        val name = slot.brawlerName
+
+        val line = if (
+            name == "Inconnu" &&
+            !slot.bestCandidateName.isNullOrBlank()
+        ) {
+            val score = (slot.confidence * 100).toInt()
+
+            "${slot.slot} : Inconnu (piste : ${slot.bestCandidateName}, $score %)"
+        } else {
+            "${slot.slot} : $name"
+        }
+
+        container.addView(
+            makeText(
+                line,
+                11f,
+                color
+            ).apply {
+                setPadding(0, 3, 0, 3)
+            }
+        )
+    }
+
     override fun onDestroy() {
+
         if (receiverRegistered) {
             unregisterReceiver(statusReceiver)
             receiverRegistered = false
         }
 
         panel?.let {
-            windowManager?.removeView(it)
+            try {
+                windowManager?.removeView(it)
+            } catch (e: Exception) {
+                // La fenêtre est peut-être déjà retirée.
+            }
         }
 
         panel = null
         statusText = null
+        body = null
+        resultsContainer = null
 
         super.onDestroy()
     }
