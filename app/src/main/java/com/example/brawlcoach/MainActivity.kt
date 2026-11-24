@@ -666,5 +666,42 @@ class MainActivity : Activity() {
             .sortedByDescending { it.second }
             .take(3)
 
-        if (recommendations.isEmpty()) {
-            result.text = "Aucune recommandation dis
+                if (recommendations.isEmpty()) {
+            result.text = "Aucune recommandation disponible."
+            return
+        }
+
+        val message = buildString {
+            append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
+
+            recommendations.forEachIndexed { index, pair ->
+                val brawler = pair.first
+                val score = pair.second
+
+                append("${index + 1}. ${brawler.name}\n")
+                append("Score : $score\n\n")
+            }
+
+            append("📊 ANALYSE DE TON ÉQUIPE\n")
+            append("Mode : ${selectedMode.ifBlank { "Non choisi" }}\n")
+            append("Carte : ${selectedMap.ifBlank { "Non choisie" }}")
+        }
+
+        result.text = message
+    }
+
+    private fun updateSummary() {
+
+        val selectedTeam = teamChoices
+            .filter { it != "Non choisi" }
+
+        val selectedEnemies = enemyChoices
+            .filter { it != "Non choisi" }
+
+        result.text =
+            "Mode : ${selectedMode.ifBlank { "Non choisi" }}\n" +
+            "Carte : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
+            "Ton équipe : ${selectedTeam.joinToString(", ").ifBlank { "À compléter" }}\n" +
+            "Adversaires : ${selectedEnemies.joinToString(", ").ifBlank { "À compléter" }}"
+    }
+}
