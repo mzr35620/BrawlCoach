@@ -129,6 +129,13 @@ class MainActivity : Activity() {
             setPadding(8, 20, 8, 20)
         }
 
+        val detectButton = Button(this).apply {
+            text = "RÉCUPÉRER LES BRAWLERS DÉTECTÉS"
+            setOnClickListener {
+                applyDetectedDraftResults()
+            }
+        }
+
         recommendButton = Button(this).apply {
             text = "TROUVER LES 3 MEILLEURS COMBATTANTS"
             setOnClickListener { recommendBrawlers() }
@@ -179,6 +186,7 @@ class MainActivity : Activity() {
             content.addView(button)
         }
 
+        content.addView(detectButton)
         content.addView(recommendButton)
         content.addView(result)
 
@@ -331,7 +339,6 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     allBrawlers = brawlers
 
-                    // Mise à jour automatique de la base OCR.
                     BrawlerReferenceDatabase.setBrawlers(
                         brawlers.map { it.name }
                     )
@@ -341,7 +348,6 @@ class MainActivity : Activity() {
 
                     brawlerImages = downloadedImages
 
-                    // Partage des portraits avec le moteur de reconnaissance.
                     BrawlerImageStore.setImages(downloadedImages)
 
                     val modeNames = allModes.map { it.name }
@@ -393,6 +399,76 @@ class MainActivity : Activity() {
                 }
             }
         }.start()
+    }
+
+    private fun applyDetectedDraftResults() {
+
+        if (allBrawlers.isEmpty()) {
+            result.text = "Charge d'abord les données BrawlAPI."
+            return
+        }
+
+        val detectedResults = BrawlDraftResultStore.getResults()
+
+        if (detectedResults.isEmpty()) {
+            result.text =
+                "Aucun résultat de reconnaissance disponible.\n\n" +
+                "La capture doit être active pour analyser le draft."
+            return
+        }
+
+        var alliesUpdated = 0
+        var enemiesUpdated = 0
+
+        detectedResults.forEach { detected ->
+
+            if (detected.brawlerName == "Inconnu") {
+                return@forEach
+            }
+
+            val brawler = allBrawlers.firstOrNull {
+                it.name.equals(
+                    detected.brawlerName,
+                    ignoreCase = true
+                )
+            } ?: return@forEach
+
+            val slotNumber = Regex("""(\d+)""")
+                .find(detected.slot)
+                ?.value
+                ?.toIntOrNull()
+                ?: return@forEach
+
+            val index = slotNumber - 1
+
+            if (index !in 0..2) {
+                return@forEach
+            }
+
+            when (detected.team) {
+
+                "Alliés" -> {
+                    teamChoices[index] = brawler.name
+                    teamButtons[index].text = brawler.name
+                    alliesUpdated++
+                }
+
+                "Adversaires" -> {
+                    enemyChoices[index] = brawler.name
+                    enemyButtons[index].text = brawler.name
+                    enemiesUpdated++
+                }
+            }
+        }
+
+        updateSummary()
+
+        result.text =
+            "RÉCUPÉRATION TERMINÉE\n\n" +
+            "Coéquipiers reconnus : $alliesUpdated\n" +
+            "Adversaires reconnus : $enemiesUpdated\n\n" +
+            "Les choix inconnus restent inchangés.\n" +
+            "Tu peux maintenant lancer les recommandations."
     }
 
     private fun showBrawlerPicker(index: Int, isTeam: Boolean) {
@@ -477,17 +553,17 @@ class MainActivity : Activity() {
         val teamClasses = teamChoices
             .filter { it != "Non choisi" }
             .mapNotNull { name ->
-                allBrawlers.find { it.name == name }
-                    ?.className
-                    ?.takeIf { it.isNotBlank() }
+                allBrawlers.find {
+                    it.name.equals(name, ignoreCase = true)
+                }?.className?.takeIf { it.isNotBlank() }
             }
 
         val enemyClasses = enemyChoices
             .filter { it != "Non choisi" }
             .mapNotNull { name ->
-                allBrawlers.find { it.name == name }
-                    ?.className
-                    ?.takeIf { it.isNotBlank() }
+                allBrawlers.find {
+                    it.name.equals(name, ignoreCase = true)
+                }?.className?.takeIf { it.isNotBlank() }
             }
 
         val teamCounts = teamClasses
@@ -553,7 +629,7 @@ class MainActivity : Activity() {
             append("\n🔎 ANALYSE DES ADVERSAIRES\n")
 
             if (enemyClasses.isEmpty()) {
-                append("Aucun adversaire sélectionné.\n")
+                append("Aucun adversaire reconnu ou sélectionné.\n")
             } else {
                 enemyCounts.forEach { (role, count) ->
                     append("$role : $count\n")
@@ -569,28 +645,4 @@ class MainActivity : Activity() {
             append("de ton équipe et des classes adverses.")
             append("\nCe calcul est indicatif : les vrais contres ")
             append("et statistiques de victoire par carte ")
-            append("ne sont pas encore intégrés.")
-        }
-
-        result.text = message
-    }
-
-    private fun updateSummary() {
-        result.text =
-            "MODE : ${selectedMode.ifBlank { "Non choisi" }}\n" +
-            "CARTE : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
-            "PORTRAITS DES BRAWLERS\n" +
-            "Images disponibles : ${brawlerImages.size} / ${allBrawlers.size}\n\n" +
-            "TON ÉQUIPE\n" +
-            teamChoices.mapIndexedNotNull { index, name ->
-                if (name == "Non choisi") null
-                else "Coéquipier ${index + 1} : $name"
-            }.joinToString("\n").ifBlank { "Aucun choix" } +
-            "\n\nÉQUIPE ADVERSE\n" +
-            enemyChoices.mapIndexedNotNull { index, name ->
-                if (name == "Non choisi") null
-                else "Adversaire ${index + 1} : $name"
-            }.joinToString("\n").ifBlank { "Aucun choix" } +
-            "\n\nSélection enregistrée."
-    }
-}
+            append("ne s
