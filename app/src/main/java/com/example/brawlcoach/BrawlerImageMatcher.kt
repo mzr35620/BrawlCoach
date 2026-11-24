@@ -14,40 +14,61 @@ object BrawlerImageMatcher {
 
     private const val SAMPLE_SIZE = 32
 
+    private fun prepareBitmap(source: Bitmap): Bitmap? {
+
+        if (source.isRecycled ||
+            source.width <= 0 ||
+            source.height <= 0
+        ) {
+            return null
+        }
+
+        val side = minOf(source.width, source.height)
+
+        val left = (source.width - side) / 2
+        val top = (source.height - side) / 2
+
+        val square = Bitmap.createBitmap(
+            source,
+            left,
+            top,
+            side,
+            side
+        )
+
+        return Bitmap.createScaledBitmap(
+            square,
+            SAMPLE_SIZE,
+            SAMPLE_SIZE,
+            true
+        ).also {
+            if (square !== source && square !== it &&
+                !square.isRecycled
+            ) {
+                square.recycle()
+            }
+        }
+    }
+
     fun compare(
         captured: Bitmap,
         reference: Bitmap
     ): Float {
 
-        if (captured.isRecycled || reference.isRecycled ||
-            captured.width <= 0 || captured.height <= 0 ||
-            reference.width <= 0 || reference.height <= 0
-        ) {
-            return 0f
-        }
+        val capturedScaled = prepareBitmap(captured)
+            ?: return 0f
 
-        val capturedScaled = Bitmap.createScaledBitmap(
-            captured,
-            SAMPLE_SIZE,
-            SAMPLE_SIZE,
-            true
-        )
-
-        val referenceScaled = Bitmap.createScaledBitmap(
-            reference,
-            SAMPLE_SIZE,
-            SAMPLE_SIZE,
-            true
-        )
+        val referenceScaled = prepareBitmap(reference)
+            ?: run {
+                if (!capturedScaled.isRecycled) {
+                    capturedScaled.recycle()
+                }
+                return 0f
+            }
 
         try {
-            val capturedPixels = IntArray(
-                SAMPLE_SIZE * SAMPLE_SIZE
-            )
-
-            val referencePixels = IntArray(
-                SAMPLE_SIZE * SAMPLE_SIZE
-            )
+            val capturedPixels = IntArray(SAMPLE_SIZE * SAMPLE_SIZE)
+            val referencePixels = IntArray(SAMPLE_SIZE * SAMPLE_SIZE)
 
             capturedScaled.getPixels(
                 capturedPixels, 0, SAMPLE_SIZE,
@@ -61,7 +82,6 @@ object BrawlerImageMatcher {
 
             var colorDifference = 0.0
             var edgeDifference = 0.0
-            var colorCount = 0
             var edgeCount = 0
 
             for (y in 0 until SAMPLE_SIZE) {
@@ -69,22 +89,13 @@ object BrawlerImageMatcher {
 
                     val index = y * SAMPLE_SIZE + x
 
-                    val color1 = capturedPixels[index]
-                    val color2 = referencePixels[index]
-
-                    val redDifference =
-                        abs(Color.red(color1) - Color.red(color2))
-
-                    val greenDifference =
-                        abs(Color.green(color1) - Color.green(color2))
-
-                    val blueDifference =
-                        abs(Color.blue(color1) - Color.blue(color2))
+                    val c1 = capturedPixels[index]
+                    val c2 = referencePixels[index]
 
                     colorDifference +=
-                        redDifference + greenDifference + blueDifference
-
-                    colorCount++
+                        abs(Color.red(c1) - Color.red(c2)) +
+                        abs(Color.green(c1) - Color.green(c2)) +
+                        abs(Color.blue(c1) - Color.blue(c2))
 
                     if (x < SAMPLE_SIZE - 1 &&
                         y < SAMPLE_SIZE - 1
@@ -93,56 +104,20 @@ object BrawlerImageMatcher {
                         val bottom = index + SAMPLE_SIZE
 
                         val gradient1 =
-                            abs(
-                                Color.red(capturedPixels[right]) -
-                                Color.red(color1)
-                            ) +
-                            abs(
-                                Color.green(capturedPixels[right]) -
-                                Color.green(color1)
-                            ) +
-                            abs(
-                                Color.blue(capturedPixels[right]) -
-                                Color.blue(color1)
-                            ) +
-                            abs(
-                                Color.red(capturedPixels[bottom]) -
-                                Color.red(color1)
-                            ) +
-                            abs(
-                                Color.green(capturedPixels[bottom]) -
-                                Color.green(color1)
-                            ) +
-                            abs(
-                                Color.blue(capturedPixels[bottom]) -
-                                Color.blue(color1)
-                            )
+                            abs(Color.red(capturedPixels[right]) - Color.red(c1)) +
+                            abs(Color.green(capturedPixels[right]) - Color.green(c1)) +
+                            abs(Color.blue(capturedPixels[right]) - Color.blue(c1)) +
+                            abs(Color.red(capturedPixels[bottom]) - Color.red(c1)) +
+                            abs(Color.green(capturedPixels[bottom]) - Color.green(c1)) +
+                            abs(Color.blue(capturedPixels[bottom]) - Color.blue(c1))
 
                         val gradient2 =
-                            abs(
-                                Color.red(referencePixels[right]) -
-                                Color.red(color2)
-                            ) +
-                            abs(
-                                Color.green(referencePixels[right]) -
-                                Color.green(color2)
-                            ) +
-                            abs(
-                                Color.blue(referencePixels[right]) -
-                                Color.blue(color2)
-                            ) +
-                            abs(
-                                Color.red(referencePixels[bottom]) -
-                                Color.red(color2)
-                            ) +
-                            abs(
-                                Color.green(referencePixels[bottom]) -
-                                Color.green(color2)
-                            ) +
-                            abs(
-                                Color.blue(referencePixels[bottom]) -
-                                Color.blue(color2)
-                            )
+                            abs(Color.red(referencePixels[right]) - Color.red(c2)) +
+                            abs(Color.green(referencePixels[right]) - Color.green(c2)) +
+                            abs(Color.blue(referencePixels[right]) - Color.blue(c2)) +
+                            abs(Color.red(referencePixels[bottom]) - Color.red(c2)) +
+                            abs(Color.green(referencePixels[bottom]) - Color.green(c2)) +
+                            abs(Color.blue(referencePixels[bottom]) - Color.blue(c2))
 
                         edgeDifference += abs(gradient1 - gradient2)
                         edgeCount++
@@ -152,7 +127,7 @@ object BrawlerImageMatcher {
 
             val colorScore =
                 1.0 - colorDifference /
-                (colorCount * 3.0 * 255.0)
+                (SAMPLE_SIZE * SAMPLE_SIZE * 3.0 * 255.0)
 
             val edgeScore =
                 1.0 - edgeDifference /
@@ -164,16 +139,11 @@ object BrawlerImageMatcher {
             ).toFloat().coerceIn(0f, 1f)
 
         } finally {
-            if (capturedScaled !== captured &&
-                !capturedScaled.isRecycled
-            ) {
+            if (!capturedScaled.isRecycled) {
                 capturedScaled.recycle()
             }
 
-            if (referenceScaled !== reference &&
-                referenceScaled !== capturedScaled &&
-                !referenceScaled.isRecycled
-            ) {
+            if (!referenceScaled.isRecycled) {
                 referenceScaled.recycle()
             }
         }
@@ -184,15 +154,11 @@ object BrawlerImageMatcher {
         minimumConfidence: Float = 0.90f
     ): BrawlerMatch? {
 
-        if (capturedPortrait.isRecycled) {
-            return null
-        }
+        if (capturedPortrait.isRecycled) return null
 
         val references = BrawlerImageStore.getImages()
 
-        if (references.isEmpty()) {
-            return null
-        }
+        if (references.isEmpty()) return null
 
         var bestMatch: BrawlerMatch? = null
 
