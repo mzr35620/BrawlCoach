@@ -41,33 +41,141 @@ object BrawlerImageMatcher {
         )
 
         try {
-            var difference = 0.0
-            var count = 0
+            val capturedPixels = IntArray(
+                SAMPLE_SIZE * SAMPLE_SIZE
+            )
+
+            val referencePixels = IntArray(
+                SAMPLE_SIZE * SAMPLE_SIZE
+            )
+
+            capturedScaled.getPixels(
+                capturedPixels, 0, SAMPLE_SIZE,
+                0, 0, SAMPLE_SIZE, SAMPLE_SIZE
+            )
+
+            referenceScaled.getPixels(
+                referencePixels, 0, SAMPLE_SIZE,
+                0, 0, SAMPLE_SIZE, SAMPLE_SIZE
+            )
+
+            var colorDifference = 0.0
+            var edgeDifference = 0.0
+            var colorCount = 0
+            var edgeCount = 0
 
             for (y in 0 until SAMPLE_SIZE) {
                 for (x in 0 until SAMPLE_SIZE) {
 
-                    val color1 = capturedScaled.getPixel(x, y)
-                    val color2 = referenceScaled.getPixel(x, y)
+                    val index = y * SAMPLE_SIZE + x
 
-                    difference +=
-                        abs(Color.red(color1) - Color.red(color2)) +
-                        abs(Color.green(color1) - Color.green(color2)) +
+                    val color1 = capturedPixels[index]
+                    val color2 = referencePixels[index]
+
+                    val redDifference =
+                        abs(Color.red(color1) - Color.red(color2))
+
+                    val greenDifference =
+                        abs(Color.green(color1) - Color.green(color2))
+
+                    val blueDifference =
                         abs(Color.blue(color1) - Color.blue(color2))
 
-                    count++
+                    colorDifference +=
+                        redDifference + greenDifference + blueDifference
+
+                    colorCount++
+
+                    if (x < SAMPLE_SIZE - 1 &&
+                        y < SAMPLE_SIZE - 1
+                    ) {
+                        val right = index + 1
+                        val bottom = index + SAMPLE_SIZE
+
+                        val gradient1 =
+                            abs(
+                                Color.red(capturedPixels[right]) -
+                                Color.red(color1)
+                            ) +
+                            abs(
+                                Color.green(capturedPixels[right]) -
+                                Color.green(color1)
+                            ) +
+                            abs(
+                                Color.blue(capturedPixels[right]) -
+                                Color.blue(color1)
+                            ) +
+                            abs(
+                                Color.red(capturedPixels[bottom]) -
+                                Color.red(color1)
+                            ) +
+                            abs(
+                                Color.green(capturedPixels[bottom]) -
+                                Color.green(color1)
+                            ) +
+                            abs(
+                                Color.blue(capturedPixels[bottom]) -
+                                Color.blue(color1)
+                            )
+
+                        val gradient2 =
+                            abs(
+                                Color.red(referencePixels[right]) -
+                                Color.red(color2)
+                            ) +
+                            abs(
+                                Color.green(referencePixels[right]) -
+                                Color.green(color2)
+                            ) +
+                            abs(
+                                Color.blue(referencePixels[right]) -
+                                Color.blue(color2)
+                            ) +
+                            abs(
+                                Color.red(referencePixels[bottom]) -
+                                Color.red(color2)
+                            ) +
+                            abs(
+                                Color.green(referencePixels[bottom]) -
+                                Color.green(color2)
+                            ) +
+                            abs(
+                                Color.blue(referencePixels[bottom]) -
+                                Color.blue(color2)
+                            )
+
+                        edgeDifference += abs(gradient1 - gradient2)
+                        edgeCount++
+                    }
                 }
             }
 
-            val maximumDifference = count * 3.0 * 255.0
+            val colorScore =
+                1.0 - colorDifference /
+                (colorCount * 3.0 * 255.0)
 
-            return (1.0 - difference / maximumDifference)
-                .toFloat()
-                .coerceIn(0f, 1f)
+            val edgeScore =
+                1.0 - edgeDifference /
+                (edgeCount * 6.0 * 255.0)
+
+            return (
+                colorScore * 0.65 +
+                edgeScore * 0.35
+            ).toFloat().coerceIn(0f, 1f)
 
         } finally {
-            capturedScaled.recycle()
-            referenceScaled.recycle()
+            if (capturedScaled !== captured &&
+                !capturedScaled.isRecycled
+            ) {
+                capturedScaled.recycle()
+            }
+
+            if (referenceScaled !== reference &&
+                referenceScaled !== capturedScaled &&
+                !referenceScaled.isRecycled
+            ) {
+                referenceScaled.recycle()
+            }
         }
     }
 
