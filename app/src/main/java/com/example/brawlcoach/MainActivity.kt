@@ -1,4 +1,3 @@
-
 package com.example.brawlcoach
 
 import android.app.Activity
@@ -416,6 +415,7 @@ class MainActivity : Activity() {
             }
         }.start()
     }
+    
     private fun applyDetectedDraftResults() {
 
         if (allBrawlers.isEmpty()) {
@@ -598,9 +598,7 @@ class MainActivity : Activity() {
             allies = teamChoices.filter {
                 it != "Non choisi"
             },
-            enemies = enemyChoices.filter {
-                it != "Non choisi"
-            },
+            enemies = emptyList(),
             limit = 3
         )
 
@@ -632,8 +630,7 @@ class MainActivity : Activity() {
             append("📊 ANALYSE DU DRAFT\n")
             append("Mode : ${selectedMode.ifBlank { "Non choisi" }}\n")
             append("Carte : ${selectedMap.ifBlank { "Non choisie" }}\n")
-            append("Alliés connus : ${teamChoices.count { it != "Non choisi" }}\n")
-            append("Adversaires connus : ${enemyChoices.count { it != "Non choisi" }}\n\n")
+            append("Alliés connus : ${teamChoices.count { it != "Non choisi" }}\n\n")
 
             append("Analyse stratégique locale.")
         }
@@ -646,15 +643,9 @@ class MainActivity : Activity() {
         val selectedTeam = teamChoices
             .filter { it != "Non choisi" }
 
-        val selectedEnemies = enemyChoices
-            .filter { it != "Non choisi" }
-
         result.text =
             "Mode : ${selectedMode.ifBlank { "Non choisi" }}\n" +
             "Carte : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
-            "Ton équipe : ${selectedTeam.joinToString(", ").ifBlank { "À compléter" }}\n" +
-            "Adversaires : ${selectedEnemies.joinToString(", ").ifBlank { "À compléter" }}"
+            "Ton équipe : ${selectedTeam.joinToString(", ").ifBlank { "À compléter" }}"
     }
 }
-
-    
