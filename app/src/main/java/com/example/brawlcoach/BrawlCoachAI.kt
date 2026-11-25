@@ -22,11 +22,17 @@ object BrawlCoachAI {
             return emptyList()
         }
 
-        val allyNames = allies
-            .filter { it.isNotBlank() && !it.equals("Inconnu", true) }
+        val allyNames = allies.filter {
+            it.isNotBlank() &&
+            !it.equals("Inconnu", true) &&
+            !it.equals("Non choisi", true)
+        }
 
-        val enemyNames = enemies
-            .filter { it.isNotBlank() && !it.equals("Inconnu", true) }
+        val enemyNames = enemies.filter {
+            it.isNotBlank() &&
+            !it.equals("Inconnu", true) &&
+            !it.equals("Non choisi", true)
+        }
 
         val allyClasses = allyNames.mapNotNull { name ->
             brawlers.find { it.name.equals(name, true) }?.className
@@ -35,6 +41,8 @@ object BrawlCoachAI {
         val enemyClasses = enemyNames.mapNotNull { name ->
             brawlers.find { it.name.equals(name, true) }?.className
         }
+
+        val mode = modeName.lowercase()
 
         return brawlers
             .filter { candidate ->
@@ -45,32 +53,31 @@ object BrawlCoachAI {
 
                 var score = 50
                 val reasons = mutableListOf<String>()
-
                 val role = candidate.className.lowercase()
-                val mode = modeName.lowercase()
-                val map = mapName.lowercase()
 
-                // Équilibre de l'équipe
-                if (role.isNotBlank()) {
-                    val sameRole = allyClasses.count {
-                        it.equals(candidate.className, true)
-                    }
+                // Complémentarité avec les alliés
+                val sameRole = allyClasses.count {
+                    it.equals(candidate.className, true)
+                }
 
+                if (allyClasses.isNotEmpty()) {
                     if (sameRole == 0) {
                         score += 12
-                        reasons.add("Apporte un rôle différent")
+                        reasons.add("Complète les rôles de l'équipe")
                     } else if (sameRole >= 2) {
-                        score -= 8
+                        score -= 10
+                        reasons.add("Rôle déjà très présent chez les alliés")
                     }
                 }
 
-                // Analyse générale du mode
+                // Adaptation au mode de jeu
                 when {
-                    mode.contains("gem") || mode.contains("surviv") -> {
+                    mode.contains("gem") ||
+                    mode.contains("surviv") -> {
                         if (role.contains("support") ||
                             role.contains("controller")) {
                             score += 10
-                            reasons.add("Rôle intéressant pour le contrôle")
+                            reasons.add("Intéressant pour le contrôle de zone")
                         }
                     }
 
@@ -79,7 +86,7 @@ object BrawlCoachAI {
                         if (role.contains("tank") ||
                             role.contains("assassin")) {
                             score += 10
-                            reasons.add("Potentiel offensif")
+                            reasons.add("Potentiel offensif pour le mode")
                         }
                     }
 
@@ -88,7 +95,7 @@ object BrawlCoachAI {
                         if (role.contains("damage") ||
                             role.contains("tank")) {
                             score += 10
-                            reasons.add("Potentiel de dégâts")
+                            reasons.add("Potentiel de dégâts sur le coffre")
                         }
                     }
 
@@ -98,22 +105,22 @@ object BrawlCoachAI {
                         if (role.contains("marksman") ||
                             role.contains("damage")) {
                             score += 10
-                            reasons.add("Adapté aux combats à distance")
+                            reasons.add("Intéressant pour les combats à distance")
                         }
                     }
                 }
 
-                // Analyse des adversaires visibles
-                val repeatedEnemyRoles = enemyClasses.count {
+                // Analyse des rôles adverses visibles
+                val enemyRoleCount = enemyClasses.count {
                     it.equals(candidate.className, true)
                 }
 
-                if (repeatedEnemyRoles > 0) {
-                    score += 3
-                    reasons.add("Présence de rôles similaires chez les adversaires")
+                if (enemyRoleCount > 0) {
+                    score -= 3 * enemyRoleCount
+                    reasons.add("Évite de reproduire les rôles adverses")
                 }
 
-                // Recherche de mots-clés dans les capacités
+                // Analyse des gadgets et pouvoirs star
                 val abilities = candidate.gadgets + candidate.starPowers
 
                 val abilityText = abilities.joinToString(" ") {
@@ -124,31 +131,33 @@ object BrawlCoachAI {
                     abilityText.contains("soin") ||
                     abilityText.contains("healing")) {
                     score += 5
-                    reasons.add("Capacité de soin")
+                    reasons.add("Dispose d'une capacité de soin")
                 }
 
                 if (abilityText.contains("shield") ||
                     abilityText.contains("bouclier")) {
                     score += 5
-                    reasons.add("Capacité défensive")
+                    reasons.add("Dispose d'une capacité défensive")
                 }
 
                 if (abilityText.contains("slow") ||
                     abilityText.contains("ralent")) {
                     score += 4
-                    reasons.add("Capacité de ralentissement")
+                    reasons.add("Dispose d'un ralentissement")
                 }
 
                 if (abilityText.contains("stun") ||
                     abilityText.contains("étour")) {
                     score += 4
-                    reasons.add("Capacité de contrôle")
+                    reasons.add("Dispose d'une capacité de contrôle")
                 }
 
-                // La carte est prise en compte dans l'analyse.
-                // Les bonus spécifiques seront ajoutés avec des données fiables.
-                if (map.isNotBlank()) {
-                    reasons.add("Carte prise en compte : $mapName")
+                // Pas de bonus inventé pour la carte :
+                // les statistiques spécifiques seront ajoutées
+                // lorsqu'une source fiable sera disponible.
+
+                if (reasons.isEmpty()) {
+                    reasons.add("Profil général à comparer")
                 }
 
                 CoachRecommendation(
