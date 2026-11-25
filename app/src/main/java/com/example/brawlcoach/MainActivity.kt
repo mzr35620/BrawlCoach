@@ -416,7 +416,6 @@ class MainActivity : Activity() {
             }
         }.start()
     }
-
     private fun applyDetectedDraftResults() {
 
         if (allBrawlers.isEmpty()) {
@@ -477,8 +476,7 @@ class MainActivity : Activity() {
             .filter { it.team == "Alliés" }
             .joinToString("\n\n") { detected ->
 
-                val score = (detected.confidence * 100)
-                    .toInt()
+                val score = (detected.confidence * 100).toInt()
 
                 val candidate = detected.bestCandidateName
                     ?: "Aucun candidat"
@@ -585,6 +583,7 @@ class MainActivity : Activity() {
             }
     }
 
+    // Nouveau moteur BrawlCoachAI connecté ici.
     private fun recommendBrawlers() {
 
         if (allBrawlers.isEmpty()) {
@@ -592,99 +591,51 @@ class MainActivity : Activity() {
             return
         }
 
-        val unavailable = (teamChoices + enemyChoices)
-            .filter { it != "Non choisi" }
-            .toSet()
+        val recommendations = BrawlCoachAI.recommend(
+            brawlers = allBrawlers,
+            modeName = selectedMode,
+            mapName = selectedMap,
+            allies = teamChoices.filter {
+                it != "Non choisi"
+            },
+            enemies = enemyChoices.filter {
+                it != "Non choisi"
+            },
+            limit = 3
+        )
 
-        val teamClasses = teamChoices
-            .filter { it != "Non choisi" }
-            .mapNotNull { name ->
-                allBrawlers.find {
-                    it.name.equals(
-                        name,
-                        ignoreCase = true
-                    )
-                }?.className?.takeIf {
-                    it.isNotBlank()
-                }
-            }
-
-        val enemyClasses = enemyChoices
-            .filter { it != "Non choisi" }
-            .mapNotNull { name ->
-                allBrawlers.find {
-                    it.name.equals(
-                        name,
-                        ignoreCase = true
-                    )
-                }?.className?.takeIf {
-                    it.isNotBlank()
-                }
-            }
-
-        val teamCounts = teamClasses
-            .groupingBy { it.trim().lowercase() }
-            .eachCount()
-
-        val enemyCounts = enemyClasses
-            .groupingBy { it.trim().lowercase() }
-            .eachCount()
-
-        val recommendations = allBrawlers
-            .filter { it.name !in unavailable }
-            .map { brawler ->
-
-                val role = brawler.className
-                    .trim()
-                    .lowercase()
-
-                var score = 50
-
-                if (role.isNotBlank()) {
-                    val teamCount = teamCounts[role] ?: 0
-
-                    score += if (teamCount == 0) {
-                        20
-                    } else {
-                        -10 * teamCount
-                    }
-
-                    if (teamCount == 0) score += 5
-                    if (teamCount >= 2) score -= 10
-
-                    val enemyCount = enemyCounts[role] ?: 0
-
-                    if (enemyCount == 0) {
-                        score += 8
-                    } else {
-                        score -= 8 * enemyCount
-                    }
-                }
-
-                Pair(brawler, score)
-            }
-            .sortedByDescending { it.second }
-            .take(3)
-
-                if (recommendations.isEmpty()) {
+        if (recommendations.isEmpty()) {
             result.text = "Aucune recommandation disponible."
             return
         }
 
         val message = buildString {
-            append("🏆 TOP 3 DES RECOMMANDATIONS\n\n")
 
-            recommendations.forEachIndexed { index, pair ->
-                val brawler = pair.first
-                val score = pair.second
+            append("🏆 TOP 3 BRAWL COACH AI\n\n")
 
-                append("${index + 1}. ${brawler.name}\n")
-                append("Score : $score\n\n")
+            recommendations.forEachIndexed { index, recommendation ->
+
+                append("${index + 1}. ${recommendation.brawler.name}\n")
+                append("Score stratégique : ${recommendation.score}/100\n")
+
+                if (recommendation.reasons.isNotEmpty()) {
+                    append("Pourquoi ce choix :\n")
+
+                    recommendation.reasons.forEach { reason ->
+                        append("• $reason\n")
+                    }
+                }
+
+                append("\n")
             }
 
-            append("📊 ANALYSE DE TON ÉQUIPE\n")
+            append("📊 ANALYSE DU DRAFT\n")
             append("Mode : ${selectedMode.ifBlank { "Non choisi" }}\n")
-            append("Carte : ${selectedMap.ifBlank { "Non choisie" }}")
+            append("Carte : ${selectedMap.ifBlank { "Non choisie" }}\n")
+            append("Alliés connus : ${teamChoices.count { it != "Non choisi" }}\n")
+            append("Adversaires connus : ${enemyChoices.count { it != "Non choisi" }}\n\n")
+
+            append("Analyse stratégique locale.")
         }
 
         result.text = message
@@ -705,3 +656,5 @@ class MainActivity : Activity() {
             "Adversaires : ${selectedEnemies.joinToString(", ").ifBlank { "À compléter" }}"
     }
 }
+
+    
