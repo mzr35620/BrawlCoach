@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.text.Normalizer
 import java.util.Locale
 
 object BrawlOcrAnalyzer {
@@ -14,7 +15,11 @@ object BrawlOcrAnalyzer {
     )
 
     private fun normalize(value: String): String {
-        return value.lowercase(Locale.ROOT)
+        return Normalizer.normalize(
+            value.lowercase(Locale.ROOT),
+            Normalizer.Form.NFD
+        )
+            .replace(Regex("\\p{Mn}+"), "")
             .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
             .replace(Regex("\\s+"), " ")
@@ -40,28 +45,46 @@ object BrawlOcrAnalyzer {
 
                 val references = BrawlerReferenceDatabase.brawlers
 
-                val recognizedNames = visionText.textBlocks
-                    .flatMap { it.lines }
-                    .map { line -> normalize(line.text) }
-                    .filter { it.isNotBlank() }
-                    .flatMap { text ->
+                val recognizedNames = mutableSetOf<String>()
 
-                        references.filter { brawler ->
+                for (block in visionText.textBlocks) {
 
-                            val names = listOf(brawler.name) +
-                                brawler.aliases
+                    val texts = block.lines.map {
+                        normalize(it.text)
+                    }.filter {
+                        it.isNotBlank()
+                    } + normalize(block.text)
 
-                            names.any { candidate ->
-                                val name = normalize(candidate)
+                    for (brawler in references) {
 
-                                name.isNotBlank() &&
-                                    text == name
+                        val names = listOf(brawler.name) +
+                            brawler.aliases
+
+                        val found = names.any { candidate ->
+
+                            val name = normalize(candidate)
+
+                            if (name.isBlank()) {
+                                false
+                            } else {
+                                texts.any { text ->
+                                    text == name ||
+                                    Regex(
+                                        "(^| )${Regex.escape(name)}( |$)"
+                                    ).containsMatchIn(text)
+                                }
                             }
-                        }.map { it.name }
-                    }
-                    .distinct()
+                        }
 
-                onResult(Result.success(recognizedNames))
+                        if (found) {
+                            recognizedNames.add(brawler.name)
+                        }
+                    }
+                }
+
+                onResult(
+                    Result.success(recognizedNames.toList())
+                )
             }
             .addOnFailureListener { error ->
                 onResult(Result.failure(error))
