@@ -471,11 +471,11 @@ class MainActivity : Activity() {
             }
         }
 
-        if (alliesUpdated > 0) {
-            recommendBrawlers()
-        } else {
-            updateSummary()
-        }
+        // Recalcul du Top 3 après la récupération.
+        recommendBrawlers()
+
+        // On conserve le résultat du Top 3 avant d'afficher le diagnostic.
+        val top3Message = result.text.toString()
 
         val diagnostics = detectedResults
             .filter { it.team == "Alliés" }
@@ -500,13 +500,11 @@ class MainActivity : Activity() {
             "RÉCUPÉRATION TERMINÉE\n\n" +
             "Coéquipiers reconnus : $alliesUpdated\n" +
             "Adversaires reconnus : $enemiesUpdated\n\n" +
-            "DIAGNOSTIC DES PORTRAITS\n\n" +
-            diagnostics +
+            top3Message +
             "\n\n" +
-            if (alliesUpdated > 0) {
-                "Le Top 3 a été recalculé automatiquement."
-            } else {
-                "Aucun coéquipier reconnu : Top 3 non actualisé."
+            "DIAGNOSTIC DES PORTRAITS\n\n" +
+            diagnostics.ifBlank {
+                "Aucun diagnostic de portrait disponible."
             }
     }
 
@@ -544,7 +542,6 @@ class MainActivity : Activity() {
                     teamChoices[index] = choice
                     teamButtons[index].text = choice
 
-                    // Actualisation automatique du Top 3
                     recommendBrawlers()
 
                 } else {
