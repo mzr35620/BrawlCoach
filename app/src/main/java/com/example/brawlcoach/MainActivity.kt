@@ -1,3 +1,4 @@
+
 package com.example.brawlcoach
 
 import android.app.Activity
@@ -470,7 +471,11 @@ class MainActivity : Activity() {
             }
         }
 
-        updateSummary()
+        if (alliesUpdated > 0) {
+            recommendBrawlers()
+        } else {
+            updateSummary()
+        }
 
         val diagnostics = detectedResults
             .filter { it.team == "Alliés" }
@@ -497,7 +502,12 @@ class MainActivity : Activity() {
             "Adversaires reconnus : $enemiesUpdated\n\n" +
             "DIAGNOSTIC DES PORTRAITS\n\n" +
             diagnostics +
-            "\n\nLes choix adverses masqués restent inconnus."
+            "\n\n" +
+            if (alliesUpdated > 0) {
+                "Le Top 3 a été recalculé automatiquement."
+            } else {
+                "Aucun coéquipier reconnu : Top 3 non actualisé."
+            }
     }
 
     private fun showBrawlerPicker(
@@ -533,12 +543,14 @@ class MainActivity : Activity() {
                 if (isTeam) {
                     teamChoices[index] = choice
                     teamButtons[index].text = choice
+
+                    // Actualisation automatique du Top 3
+                    recommendBrawlers()
+
                 } else {
                     enemyChoices[index] = choice
                     enemyButtons[index].text = choice
                 }
-
-                updateSummary()
             }
             .setNegativeButton("Annuler", null)
             .show()
@@ -574,7 +586,11 @@ class MainActivity : Activity() {
                     selectedMap =
                         mapNames.getOrElse(position) { "" }
 
-                    updateSummary()
+                    if (allBrawlers.isNotEmpty()) {
+                        recommendBrawlers()
+                    } else {
+                        updateSummary()
+                    }
                 }
 
                 override fun onNothingSelected(
@@ -583,7 +599,6 @@ class MainActivity : Activity() {
             }
     }
 
-    // Nouveau moteur BrawlCoachAI connecté ici.
     private fun recommendBrawlers() {
 
         if (allBrawlers.isEmpty()) {
