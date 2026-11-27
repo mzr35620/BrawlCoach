@@ -51,21 +51,39 @@ object BrawlModeMapAnalyzer {
                     lines.joinToString(" ")
                 )
 
-                val detectedMode = BrawlModeMapStore.modes
-                    .filter { it.name.isNotBlank() }
-                    .firstOrNull { mode ->
-                        val name = normalize(mode.name)
-                        name.isNotBlank() &&
-                            detectedText.contains(name)
-                    }
-
                 val detectedMap = BrawlModeMapStore.maps
                     .filter { it.name.isNotBlank() && !it.disabled }
                     .firstOrNull { map ->
                         val name = normalize(map.name)
+
                         name.isNotBlank() &&
                             detectedText.contains(name)
                     }
+
+                val detectedModeFromText =
+                    BrawlModeMapStore.modes
+                        .filter { it.name.isNotBlank() }
+                        .firstOrNull { mode ->
+                            val name = normalize(mode.name)
+
+                            name.isNotBlank() &&
+                                detectedText.contains(name)
+                        }
+
+                // Si le mode n'est pas reconnu par OCR,
+                // on essaie de le retrouver grâce à la carte.
+                val detectedModeFromMap =
+                    detectedMap?.gameMode?.let { mapMode ->
+
+                        val normalizedMapMode = normalize(mapMode)
+
+                        BrawlModeMapStore.modes.firstOrNull { mode ->
+                            normalize(mode.name) == normalizedMapMode
+                        }
+                    }
+
+                val detectedMode =
+                    detectedModeFromText ?: detectedModeFromMap
 
                 onResult(
                     Result.success(
