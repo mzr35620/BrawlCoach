@@ -662,4 +662,10 @@ class MainActivity : Activity() {
 
         result.text =
             "Mode : ${selectedMode.ifBlank { "Non choisi" }}\n" +
-            "Carte : ${selectedMap.if
+            "Carte : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
+"Ton équipe : ${
+    selectedTeam.joinToString(", ")
+        .ifBlank { "À compléter" }
+}"
+    }
+}
