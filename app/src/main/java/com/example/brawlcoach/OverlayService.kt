@@ -30,12 +30,19 @@ class OverlayService : Service() {
     private var minimized = false
     private var receiverRegistered = false
 
+    private var detectedMode: String? = null
+    private var detectedMap: String? = null
+
     private val green = Color.rgb(65, 230, 145)
     private val white = Color.WHITE
     private val muted = Color.rgb(170, 180, 195)
 
     private val statusReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
+
+        override fun onReceive(
+            context: Context?,
+            intent: Intent?
+        ) {
 
             if (intent?.action != BrawlCaptureService.ACTION_STATUS) {
                 return
@@ -43,16 +50,48 @@ class OverlayService : Service() {
 
             val message = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_STATUS
-            ) ?: return
+            )
 
-            statusText?.text = "●  $message"
+            if (!message.isNullOrBlank()) {
+                statusText?.text = "●  $message"
+            }
 
-            // Actualise les combattants après chaque analyse.
-            renderDraftResults()
+            val mode = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_MODE
+            )
+
+            val map = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_MAP
+            )
+
+            if (!mode.isNullOrBlank()) {
+                detectedMode = mode
+            }
+
+            if (!map.isNullOrBlank()) {
+                detectedMap = map
+            }
+
+            val detection =
+                BrawlModeMapStore.latestDetection
+
+            if (detection != null) {
+
+                if (!detection.modeName.isNullOrBlank()) {
+                    detectedMode = detection.modeName
+                }
+
+                if (!detection.mapName.isNullOrBlank()) {
+                    detectedMap = detection.mapName
+                }
+            }
+
+            renderModeMap()
         }
     }
 
     private fun registerStatusReceiver() {
+
         if (receiverRegistered) return
 
         val filter = IntentFilter(
@@ -77,6 +116,7 @@ class OverlayService : Service() {
         color: Int,
         radius: Float
     ): GradientDrawable {
+
         return GradientDrawable().apply {
             setColor(color)
             cornerRadius = radius
@@ -102,11 +142,19 @@ class OverlayService : Service() {
 
         registerStatusReceiver()
 
+        val detection =
+            BrawlModeMapStore.latestDetection
+
+        if (detection != null) {
+            detectedMode = detection.modeName
+            detectedMap = detection.mapName
+        }
+
         if (panel == null) {
             createPanel()
         }
 
-        renderDraftResults()
+        renderModeMap()
 
         return START_NOT_STICKY
     }
@@ -166,6 +214,7 @@ class OverlayService : Service() {
             dragHandle,
             LinearLayout.LayoutParams(0, -2, 1f)
         )
+
         header.addView(reduce)
         header.addView(close)
 
@@ -185,12 +234,16 @@ class OverlayService : Service() {
         addSeparator()
 
         body?.addView(
-            makeText("🟢  TON ÉQUIPE", 13f, green)
+            makeText(
+                "🎮  ANALYSE DU CLASSÉ",
+                13f,
+                green
+            )
         )
 
         resultsContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 6, 0, 6)
+            setPadding(0, 8, 0, 8)
         }
 
         body?.addView(resultsContainer)
@@ -198,16 +251,12 @@ class OverlayService : Service() {
         addSeparator()
 
         body?.addView(
-            makeText("🔴  ADVERSAIRES", 13f, white)
+            makeText(
+                "Analyse locale • BRAWL COACH",
+                10f,
+                muted
+            )
         )
-
-        val footer = makeText(
-            "Analyse locale • BRAWL COACH",
-            10f,
-            muted
-        )
-
-        body?.addView(footer)
 
         root.addView(header)
         root.addView(body)
@@ -273,6 +322,7 @@ class OverlayService : Service() {
                 }
 
                 MotionEvent.ACTION_CANCEL -> true
+
                 else -> false
             }
         }
@@ -296,100 +346,73 @@ class OverlayService : Service() {
         )
     }
 
-    private fun renderDraftResults() {
+    private fun renderModeMap() {
 
         val container = resultsContainer ?: return
 
         container.removeAllViews()
 
-        val results = BrawlDraftResultStore.getResults()
+        val detection =
+            BrawlModeMapStore.latestDetection
 
-        if (results.isEmpty()) {
+        if (detection != null) {
+
+            if (!detection.modeName.isNullOrBlank()) {
+                detectedMode = detection.modeName
+            }
+
+            if (!detection.mapName.isNullOrBlank()) {
+                detectedMap = detection.mapName
+            }
+        }
+
+        val mode = detectedMode
+        val map = detectedMap
+
+        container.addView(
+            makeText(
+                "Mode : ${mode ?: "En attente de détection"}",
+                13f,
+                if (mode != null) green else muted
+            ).apply {
+                setPadding(0, 5, 0, 5)
+            }
+        )
+
+        container.addView(
+            makeText(
+                "Carte : ${map ?: "En attente de détection"}",
+                13f,
+                if (map != null) green else muted
+            ).apply {
+                setPadding(0, 5, 0, 5)
+            }
+        )
+
+        if (mode == null || map == null) {
+
             container.addView(
                 makeText(
-                    "En attente des combattants détectés...",
+                    "Analyse de l'écran en cours...",
                     11f,
                     muted
-                )
+                ).apply {
+                    setPadding(0, 10, 0, 2)
+                }
             )
-            return
-        }
 
-        val allies = results.filter {
-            it.team == "Alliés"
-        }
-
-        val enemies = results.filter {
-            it.team == "Adversaires"
-        }
-
-        allies.forEach { slot ->
-            addResultRow(
-                container,
-                slot,
-                green
-            )
-        }
-
-        if (allies.isEmpty()) {
-            container.addView(
-                makeText("Aucun allié détecté", 11f, muted)
-            )
-        }
-
-        container.addView(
-            makeText(
-                "Adversaires :",
-                11f,
-                muted
-            ).apply {
-                setPadding(0, 8, 0, 4)
-            }
-        )
-
-        enemies.forEach { slot ->
-            addResultRow(
-                container,
-                slot,
-                white
-            )
-        }
-
-        if (enemies.isEmpty()) {
-            container.addView(
-                makeText("En attente", 11f, muted)
-            )
-        }
-    }
-
-    private fun addResultRow(
-        container: LinearLayout,
-        slot: DraftSlotResult,
-        color: Int
-    ) {
-
-        val name = slot.brawlerName
-
-        val line = if (
-            name == "Inconnu" &&
-            !slot.bestCandidateName.isNullOrBlank()
-        ) {
-            val score = (slot.confidence * 100).toInt()
-
-            "${slot.slot} : Inconnu (piste : ${slot.bestCandidateName}, $score %)"
         } else {
-            "${slot.slot} : $name"
-        }
 
-        container.addView(
-            makeText(
-                line,
-                11f,
-                color
-            ).apply {
-                setPadding(0, 3, 0, 3)
-            }
-        )
+            container.addView(
+                makeText(
+                    "Mode et carte reconnus",
+                    11f,
+                    green
+                ).apply {
+                    setPadding(0, 10, 0, 2)
+                }
+            )
+        }
     }
 
     override fun onDestroy() {
@@ -403,7 +426,7 @@ class OverlayService : Service() {
             try {
                 windowManager?.removeView(it)
             } catch (e: Exception) {
-                // La fenêtre est peut-être déjà retirée.
+                // Fenêtre déjà retirée.
             }
         }
 
