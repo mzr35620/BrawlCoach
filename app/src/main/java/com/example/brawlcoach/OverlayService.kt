@@ -43,26 +43,42 @@ class OverlayService : Service() {
             context: Context?,
             intent: Intent?
         ) {
-
             if (intent?.action != BrawlCaptureService.ACTION_STATUS) {
                 return
             }
 
             val message = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_STATUS
-            )
+            ) ?: ""
 
-            if (!message.isNullOrBlank()) {
-                statusText?.text = "●  $message"
-            }
+            statusText?.text = "●  $message"
 
-            val mode = intent.getStringExtra(
+            var mode = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MODE
             )
 
-            val map = intent.getStringExtra(
+            var map = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MAP
             )
+
+            // Récupération de secours depuis le message.
+            if (mode.isNullOrBlank()) {
+                val match = Regex(
+                    """Mode\s*:\s*(.*?)\s*\|\s*Carte""",
+                    RegexOption.IGNORE_CASE
+                ).find(message)
+
+                mode = match?.groupValues?.getOrNull(1)?.trim()
+            }
+
+            if (map.isNullOrBlank()) {
+                val match = Regex(
+                    """Carte\s*:\s*(.*)""",
+                    RegexOption.IGNORE_CASE
+                ).find(message)
+
+                map = match?.groupValues?.getOrNull(1)?.trim()
+            }
 
             if (!mode.isNullOrBlank()) {
                 detectedMode = mode
@@ -70,20 +86,6 @@ class OverlayService : Service() {
 
             if (!map.isNullOrBlank()) {
                 detectedMap = map
-            }
-
-            val detection =
-                BrawlModeMapStore.latestDetection
-
-            if (detection != null) {
-
-                if (!detection.modeName.isNullOrBlank()) {
-                    detectedMode = detection.modeName
-                }
-
-                if (!detection.mapName.isNullOrBlank()) {
-                    detectedMap = detection.mapName
-                }
             }
 
             renderModeMap()
@@ -116,7 +118,6 @@ class OverlayService : Service() {
         color: Int,
         radius: Float
     ): GradientDrawable {
-
         return GradientDrawable().apply {
             setColor(color)
             cornerRadius = radius
