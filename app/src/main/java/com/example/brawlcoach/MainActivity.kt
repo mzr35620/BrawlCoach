@@ -2,49 +2,96 @@
 package com.example.brawlcoach
 
 import android.app.Activity
-import android.app.AlertDialog
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.Color
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.graphics.Color
-import android.graphics.Bitmap
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
-import android.media.projection.MediaProjectionConfig
-import android.media.projection.MediaProjectionManager
-import android.os.Build
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 
 class MainActivity : Activity() {
 
     private lateinit var result: TextView
     private lateinit var loadButton: Button
-    private lateinit var recommendButton: Button
-    private lateinit var modeSpinner: Spinner
-    private lateinit var mapSpinner: Spinner
+    private lateinit var captureButton: Button
 
-    private val teamButtons = mutableListOf<Button>()
-    private val enemyButtons = mutableListOf<Button>()
-
-    private val teamChoices = MutableList(3) { "Non choisi" }
-    private val enemyChoices = MutableList(3) { "Non choisi" }
-
+    private var allBrawlers: List<Brawler> = emptyList()
     private var allMaps: List<BrawlMap> = emptyList()
     private var allModes: List<BrawlGameMode> = emptyList()
-    private var allBrawlers: List<Brawler> = emptyList()
-
-    private var brawlerImages: Map<String, Bitmap> = emptyMap()
 
     private var selectedMode = ""
     private var selectedMap = ""
 
-    private var captureResultCode: Int = Activity.RESULT_CANCELED
-    private var captureData: Intent? = null
+    private var lastRecommendationKey = ""
 
     companion object {
         private const val REQUEST_CAPTURE = 2001
+    }
+
+    private var receiverRegistered = false
+
+    private val captureReceiver = object : BroadcastReceiver() {
+
+        override fun onReceive(context: Context?, intent: Intent?) {
+
+            if (intent?.action != BrawlCaptureService.ACTION_STATUS) {
+                return
+            }
+
+            val status = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_STATUS
+            ) ?: "Analyse en cours..."
+
+            val detectedMode = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_MODE
+            )
+
+            val detectedMap = intent.getStringExtra(
+                BrawlCaptureService.EXTRA_MAP
+            )
+
+            if (!detectedMode.isNullOrBlank()) {
+                selectedMode = detectedMode
+            }
+
+            if (!detectedMap.isNullOrBlank()) {
+                selectedMap = detectedMap
+            }
+
+            if (allBrawlers.isNotEmpty() &&
+                selectedMode.isNotBlank() &&
+                selectedMap.isNotBlank()
+            ) {
+
+                val key = "$selectedMode|$selectedMap"
+
+                if (key != lastRecommendationKey) {
+                    lastRecommendationKey = key
+                    recommendBrawlers()
+                }
+
+            } else {
+
+                result.text =
+                    "BRAWL COACH\n\n" +
+                    "$status\n\n" +
+                    "Mode : ${selectedMode.ifBlank { "En attente" }}\n" +
+                    "Carte : ${selectedMap.ifBlank { "En attente" }}"
+            }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,156 +104,140 @@ class MainActivity : Activity() {
             setBackgroundColor(Color.rgb(17, 24, 39))
         }
 
-        fun makeLabel(value: String): TextView {
-            return TextView(this).apply {
-                text = value
-                textSize = 16f
-                setTextColor(Color.WHITE)
-                setPadding(0, 14, 0, 6)
-            }
-        }
-
         val title = TextView(this).apply {
             text = "BRAWL COACH"
             textSize = 30f
-            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(0, 10, 0, 10)
         }
 
-        val subtitle = makeLabel("Assistant de draft")
+        val subtitle = TextView(this).apply {
+            text = "Assistant automatique de draft"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.LTGRAY)
+            setPadding(0, 0, 0, 20)
+        }
 
-        val overlay = Button(this).apply {
+        val overlayButton = Button(this).apply {
             text = "Autoriser la superposition"
+
             setOnClickListener {
                 if (!Settings.canDrawOverlays(this@MainActivity)) {
+
                     startActivity(
                         Intent(
                             Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                             Uri.parse("package:$packageName")
                         )
                     )
+
                 } else {
+
                     startService(
                         Intent(
                             this@MainActivity,
                             OverlayService::class.java
                         )
                     )
+
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Superposition activée",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }
 
-        val captureButton = Button(this).apply {
-            text = "Préparer l'analyse de Brawl Stars"
+        captureButton = Button(this).apply {
+            text = "DÉMARRER L'ANALYSE"
 
             setOnClickListener {
                 val intent = createCaptureIntent()
 
                 if (intent == null) {
                     result.text =
-                        "Cette fonction nécessite Android 14 ou supérieur."
+                        "La capture nécessite Android 14 ou supérieur."
                     return@setOnClickListener
                 }
 
                 result.text =
-                    "Autorisation Android demandée.\n" +
+                    "Autorisation Android demandée.\n\n" +
                     "Choisis uniquement Brawl Stars."
 
-                startActivityForResult(intent, REQUEST_CAPTURE)
+                startActivityForResult(
+                    intent,
+                    REQUEST_CAPTURE
+                )
             }
         }
 
         loadButton = Button(this).apply {
-            text = "Charger les données BrawlAPI"
+            text = "CHARGER LES DONNÉES BRAWLAPI"
             setOnClickListener {
                 loadBrawlData()
             }
         }
 
-        modeSpinner = Spinner(this)
-        mapSpinner = Spinner(this)
-
         result = TextView(this).apply {
-            text = "Charge les données pour commencer."
-            textSize = 15f
-            setTextColor(Color.WHITE)
+            text = "Charge les données BrawlAPI pour commencer."
+            textSize = 16f
             gravity = Gravity.CENTER
-            setPadding(8, 20, 8, 20)
-        }
-
-        val detectButton = Button(this).apply {
-            text = "RÉCUPÉRER LES BRAWLERS DÉTECTÉS"
-            setOnClickListener {
-                applyDetectedDraftResults()
-            }
-        }
-
-        recommendButton = Button(this).apply {
-            text = "TROUVER LES 3 MEILLEURS COMBATTANTS"
-            setOnClickListener {
-                recommendBrawlers()
-            }
-            isEnabled = false
+            setTextColor(Color.WHITE)
+            setPadding(12, 30, 12, 30)
         }
 
         content.addView(title)
         content.addView(subtitle)
-        content.addView(overlay)
+        content.addView(overlayButton)
         content.addView(captureButton)
         content.addView(loadButton)
-
-        content.addView(makeLabel("MODE DE JEU"))
-        content.addView(modeSpinner)
-
-        content.addView(makeLabel("CARTE"))
-        content.addView(mapSpinner)
-
-        content.addView(makeLabel("TON ÉQUIPE"))
-
-        repeat(3) { index ->
-            content.addView(
-                makeLabel("Coéquipier ${index + 1}")
-            )
-
-            val button = Button(this).apply {
-                text = "Non choisi"
-                setOnClickListener {
-                    showBrawlerPicker(index, true)
-                }
-            }
-
-            teamButtons.add(button)
-            content.addView(button)
-        }
-
-        content.addView(makeLabel("ÉQUIPE ADVERSE"))
-
-        repeat(3) { index ->
-            content.addView(
-                makeLabel("Adversaire ${index + 1}")
-            )
-
-            val button = Button(this).apply {
-                text = "Non choisi"
-                setOnClickListener {
-                    showBrawlerPicker(index, false)
-                }
-            }
-
-            enemyButtons.add(button)
-            content.addView(button)
-        }
-
-        content.addView(detectButton)
-        content.addView(recommendButton)
         content.addView(result)
 
         val scrollView = ScrollView(this)
         scrollView.addView(content)
+
         setContentView(scrollView)
     }
 
+    override fun onStart() {
+        super.onStart()
+
+        if (!receiverRegistered) {
+
+            val filter = IntentFilter(
+                BrawlCaptureService.ACTION_STATUS
+            )
+
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(
+                    captureReceiver,
+                    filter,
+                    Context.RECEIVER_NOT_EXPORTED
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(captureReceiver, filter)
+            }
+
+            receiverRegistered = true
+        }
+    }
+
+    override fun onStop() {
+
+        if (receiverRegistered) {
+            unregisterReceiver(captureReceiver)
+            receiverRegistered = false
+        }
+
+        super.onStop()
+    }
+
     private fun createCaptureIntent(): Intent? {
+
         if (Build.VERSION.SDK_INT < 34) {
             return null
         }
@@ -228,383 +259,112 @@ class MainActivity : Activity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
 
-        if (requestCode == REQUEST_CAPTURE) {
+        if (requestCode != REQUEST_CAPTURE) {
+            return
+        }
 
-            if (resultCode == Activity.RESULT_OK && data != null) {
+        if (resultCode == Activity.RESULT_OK && data != null) {
 
-                captureResultCode = resultCode
-                captureData = data
+            val serviceIntent = Intent(
+                this,
+                BrawlCaptureService::class.java
+            ).apply {
+                putExtra(
+                    BrawlCaptureService.EXTRA_RESULT_CODE,
+                    resultCode
+                )
 
-                val serviceIntent = Intent(
-                    this,
-                    BrawlCaptureService::class.java
-                ).apply {
-                    putExtra(
-                        BrawlCaptureService.EXTRA_RESULT_CODE,
-                        resultCode
-                    )
-                    putExtra(
-                        BrawlCaptureService.EXTRA_DATA,
-                        data
-                    )
+                putExtra(
+                    BrawlCaptureService.EXTRA_DATA,
+                    data
+                )
+            }
+
+            try {
+
+                if (Build.VERSION.SDK_INT >= 26) {
+                    startForegroundService(serviceIntent)
+                } else {
+                    startService(serviceIntent)
                 }
-
-                try {
-                    if (Build.VERSION.SDK_INT >= 26) {
-                        startForegroundService(serviceIntent)
-                    } else {
-                        startService(serviceIntent)
-                    }
-
-                    result.text =
-                        "Autorisation accordée !\n\n" +
-                        "Démarrage du service de capture demandé."
-
-                    captureData = null
-
-                } catch (e: Exception) {
-                    result.text =
-                        "Erreur au démarrage : ${e.message}"
-                }
-
-            } else {
-                captureResultCode = Activity.RESULT_CANCELED
-                captureData = null
 
                 result.text =
-                    "Autorisation refusée ou annulée.\n" +
-                    "Aucune capture ne sera effectuée."
-            }
-        }
-    }
+                    "Capture démarrée.\n\n" +
+                    "En attente de la détection du mode et de la carte."
 
-    private fun createSpinnerAdapter(
-        values: List<String>
-    ): ArrayAdapter<String> {
+            } catch (e: Exception) {
 
-        return object : ArrayAdapter<String>(
-            this,
-            android.R.layout.simple_spinner_item,
-            values
-        ) {
-
-            override fun getView(
-                position: Int,
-                convertView: View?,
-                parent: ViewGroup
-            ): View {
-
-                val view = super.getView(
-                    position,
-                    convertView,
-                    parent
-                ) as TextView
-
-                view.setTextColor(Color.WHITE)
-                view.textSize = 18f
-                view.setPadding(16, 12, 16, 12)
-
-                return view
+                result.text =
+                    "Erreur au démarrage : ${e.message}"
             }
 
-            override fun getDropDownView(
-                position: Int,
-                convertView: View?,
-                parent: ViewGroup
-            ): View {
+        } else {
 
-                val view = super.getDropDownView(
-                    position,
-                    convertView,
-                    parent
-                ) as TextView
-
-                view.setTextColor(Color.WHITE)
-                view.textSize = 18f
-                view.setBackgroundColor(
-                    Color.rgb(31, 41, 55)
-                )
-                view.setPadding(20, 16, 20, 16)
-
-                return view
-            }
-        }.apply {
-            setDropDownViewResource(
-                android.R.layout.simple_spinner_dropdown_item
-            )
+            result.text =
+                "Autorisation refusée ou annulée."
         }
     }
 
     private fun loadBrawlData() {
+
         loadButton.isEnabled = false
-        loadButton.text = "Chargement..."
+        loadButton.text = "CHARGEMENT..."
         result.text = "Connexion à BrawlAPI..."
 
         Thread {
+
             try {
+
                 val brawlers = BrawlApi.getBrawlers()
                 val maps = BrawlApi.getMaps()
                 val modes = BrawlApi.getGameModes()
 
-                val downloadedImages =
-                    BrawlerImageRepository.downloadAll(brawlers)
-
                 runOnUiThread {
+
                     allBrawlers = brawlers
-
-                    BrawlerReferenceDatabase.setBrawlers(
-                        brawlers.map { it.name }
-                    )
-
                     allMaps = maps.filter { !it.disabled }
                     allModes = modes.filter { !it.disabled }
 
-                    // NOUVEAU : références pour la détection
-                    // automatique du mode et de la carte.
                     BrawlModeMapStore.setReferences(
                         newModes = allModes,
                         newMaps = allMaps
                     )
 
-                    brawlerImages = downloadedImages
-
-                    BrawlerImageStore.setImages(
-                        downloadedImages
-                    )
-
-                    val modeNames = allModes
-                        .map { it.name }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-
-                    modeSpinner.adapter =
-                        createSpinnerAdapter(modeNames)
-
-                    modeSpinner.onItemSelectedListener =
-                        object : AdapterView.OnItemSelectedListener {
-
-                            override fun onItemSelected(
-                                parent: AdapterView<*>?,
-                                view: View?,
-                                position: Int,
-                                id: Long
-                            ) {
-                                if (modeNames.isNotEmpty()) {
-                                    selectedMode = modeNames[position]
-                                    updateMaps(selectedMode)
-                                }
-                            }
-
-                            override fun onNothingSelected(
-                                parent: AdapterView<*>?
-                            ) {}
-                        }
-
-                    recommendButton.isEnabled = true
+                    loadButton.isEnabled = true
+                    loadButton.text = "ACTUALISER LES DONNÉES"
 
                     result.text =
-                        "Connexion réussie !\n\n" +
-                        "Combattants : ${brawlers.size}\n" +
-                        "Images téléchargées : ${brawlerImages.size}\n" +
+                        "DONNÉES CHARGÉES !\n\n" +
+                        "Brawlers : ${allBrawlers.size}\n" +
                         "Cartes : ${allMaps.size}\n" +
-                        "Modes : ${modeNames.size}\n\n" +
-                        "Choisis tes combattants."
-
-                    loadButton.text = "Actualiser les données"
-                    loadButton.isEnabled = true
+                        "Modes : ${allModes.size}\n\n" +
+                        "Tu peux démarrer l'analyse de Brawl Stars."
                 }
-
             } catch (e: Exception) {
+
                 runOnUiThread {
-                    result.text = "Erreur : ${e.message}"
-                    loadButton.text = "Réessayer"
+
                     loadButton.isEnabled = true
+                    loadButton.text = "RÉESSAYER"
+
+                    result.text =
+                        "Erreur BrawlAPI : ${e.message}"
                 }
             }
+
         }.start()
     }
 
-    private fun applyDetectedDraftResults() {
+    private fun recommendBrawlers() {
 
         if (allBrawlers.isEmpty()) {
             result.text = "Charge d'abord les données BrawlAPI."
             return
         }
 
-        val detectedResults = BrawlDraftResultStore.getResults()
-
-        if (detectedResults.isEmpty()) {
+        if (selectedMode.isBlank() || selectedMap.isBlank()) {
             result.text =
-                "Aucun résultat de reconnaissance disponible.\n\n" +
-                "La capture doit être active pour analyser le draft."
-            return
-        }
-
-        var alliesUpdated = 0
-        var enemiesUpdated = 0
-
-        detectedResults.forEach { detected ->
-
-            if (detected.brawlerName == "Inconnu") {
-                return@forEach
-            }
-
-            val brawler = allBrawlers.firstOrNull {
-                it.name.equals(detected.brawlerName, ignoreCase = true)
-            } ?: return@forEach
-
-            val slotNumber = Regex("""(\d+)""")
-                .find(detected.slot)
-                ?.value
-                ?.toIntOrNull()
-                ?: return@forEach
-
-            val index = slotNumber - 1
-
-            if (index !in 0..2) return@forEach
-
-            when (detected.team) {
-                "Alliés" -> {
-                    teamChoices[index] = brawler.name
-                    teamButtons[index].text = brawler.name
-                    alliesUpdated++
-                }
-
-                "Adversaires" -> {
-                    enemyChoices[index] = brawler.name
-                    enemyButtons[index].text = brawler.name
-                    enemiesUpdated++
-                }
-            }
-        }
-
-        recommendBrawlers()
-
-        val top3Message = result.text.toString()
-
-        val diagnostics = detectedResults
-            .filter { it.team == "Alliés" }
-            .joinToString("\n\n") { detected ->
-
-                val score = (detected.confidence * 100).toInt()
-
-                val candidate = detected.bestCandidateName
-                    ?: "Aucun candidat"
-
-                if (detected.brawlerName == "Inconnu") {
-                    "${detected.slot} : Inconnu\n" +
-                    "Meilleur candidat : $candidate\n" +
-                    "Score de ressemblance : $score %"
-                } else {
-                    "${detected.slot} : ${detected.brawlerName}\n" +
-                    "Score de ressemblance : $score %"
-                }
-            }
-
-        result.text =
-            "RÉCUPÉRATION TERMINÉE\n\n" +
-            "Coéquipiers reconnus : $alliesUpdated\n" +
-            "Adversaires reconnus : $enemiesUpdated\n\n" +
-            top3Message +
-            "\n\n" +
-            "DIAGNOSTIC DES PORTRAITS\n\n" +
-            diagnostics.ifBlank {
-                "Aucun diagnostic de portrait disponible."
-            }
-    }
-
-    private fun showBrawlerPicker(
-        index: Int,
-        isTeam: Boolean
-    ) {
-        if (allBrawlers.isEmpty()) {
-            Toast.makeText(
-                this,
-                "Charge d'abord les données BrawlAPI.",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        val names = arrayOf("Non choisi") +
-            allBrawlers.map { it.name }
-                .distinct()
-                .toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle(
-                if (isTeam) {
-                    "Choisir un coéquipier"
-                } else {
-                    "Choisir un adversaire"
-                }
-            )
-            .setItems(names) { _, position ->
-
-                val choice = names[position]
-
-                if (isTeam) {
-                    teamChoices[index] = choice
-                    teamButtons[index].text = choice
-
-                    recommendBrawlers()
-
-                } else {
-                    enemyChoices[index] = choice
-                    enemyButtons[index].text = choice
-                }
-            }
-            .setNegativeButton("Annuler", null)
-            .show()
-    }
-
-    private fun updateMaps(modeName: String) {
-        val mapNames = allMaps.filter {
-            it.gameMode.equals(
-                modeName,
-                ignoreCase = true
-            )
-        }.map { it.name }
-            .filter { it.isNotBlank() }
-
-        val values = if (mapNames.isEmpty()) {
-            listOf("Aucune carte disponible")
-        } else {
-            mapNames
-        }
-
-        mapSpinner.adapter =
-            createSpinnerAdapter(values)
-
-        mapSpinner.onItemSelectedListener =
-            object : AdapterView.OnItemSelectedListener {
-
-                override fun onItemSelected(
-                    parent: AdapterView<*>?,
-                    view: View?,
-                    position: Int,
-                    id: Long
-                ) {
-                    selectedMap =
-                        mapNames.getOrElse(position) { "" }
-
-                    if (allBrawlers.isNotEmpty()) {
-                        recommendBrawlers()
-                    } else {
-                        updateSummary()
-                    }
-                }
-
-                override fun onNothingSelected(
-                    parent: AdapterView<*>?
-                ) {}
-            }
-    }
-
-    private fun recommendBrawlers() {
-
-        if (allBrawlers.isEmpty()) {
-            result.text = "Charge d'abord les données."
+                "En attente de la détection du mode et de la carte."
             return
         }
 
@@ -612,9 +372,7 @@ class MainActivity : Activity() {
             brawlers = allBrawlers,
             modeName = selectedMode,
             mapName = selectedMap,
-            allies = teamChoices.filter {
-                it != "Non choisi"
-            },
+            allies = emptyList(),
             enemies = emptyList(),
             limit = 3
         )
@@ -624,48 +382,35 @@ class MainActivity : Activity() {
             return
         }
 
-        val message = buildString {
+        result.text = buildString {
 
-            append("🏆 TOP 3 BRAWL COACH AI\n\n")
+            append("🏆 TOP 3 BRAWL COACH\n\n")
+
+            append("Mode : $selectedMode\n")
+            append("Carte : $selectedMap\n\n")
 
             recommendations.forEachIndexed { index, recommendation ->
 
-                append("${index + 1}. ${recommendation.brawler.name}\n")
-                append("Score stratégique : ${recommendation.score}/100\n")
+                append("${index + 1}. ")
+                append(recommendation.brawler.name)
+                append("\n")
 
-                if (recommendation.reasons.isNotEmpty()) {
-                    append("Pourquoi ce choix :\n")
+                append("Score : ")
+                append(recommendation.score)
+                append("\n")
 
-                    recommendation.reasons.forEach { reason ->
-                        append("• $reason\n")
-                    }
+                recommendation.reasons.forEach { reason ->
+                    append("• $reason\n")
                 }
 
                 append("\n")
             }
 
-            append("📊 ANALYSE DU DRAFT\n")
-            append("Mode : ${selectedMode.ifBlank { "Non choisi" }}\n")
-            append("Carte : ${selectedMap.ifBlank { "Non choisie" }}\n")
-            append("Alliés connus : ${teamChoices.count { it != "Non choisi" }}\n\n")
-
-            append("Analyse stratégique locale.")
+            append("Analyse automatique terminée.\n\n")
+            append(
+                "Classement indicatif basé sur les règles " +
+                "stratégiques intégrées à Brawl Coach."
+            )
         }
-
-        result.text = message
-    }
-
-    private fun updateSummary() {
-
-        val selectedTeam = teamChoices
-            .filter { it != "Non choisi" }
-
-        result.text =
-            "Mode : ${selectedMode.ifBlank { "Non choisi" }}\n" +
-            "Carte : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
-"Ton équipe : ${
-    selectedTeam.joinToString(", ")
-        .ifBlank { "À compléter" }
-}"
     }
 }
