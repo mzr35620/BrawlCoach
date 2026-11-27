@@ -359,6 +359,13 @@ class MainActivity : Activity() {
                     allMaps = maps.filter { !it.disabled }
                     allModes = modes.filter { !it.disabled }
 
+                    // NOUVEAU : références pour la détection
+                    // automatique du mode et de la carte.
+                    BrawlModeMapStore.setReferences(
+                        newModes = allModes,
+                        newMaps = allMaps
+                    )
+
                     brawlerImages = downloadedImages
 
                     BrawlerImageStore.setImages(
@@ -416,7 +423,7 @@ class MainActivity : Activity() {
             }
         }.start()
     }
-    
+
     private fun applyDetectedDraftResults() {
 
         if (allBrawlers.isEmpty()) {
@@ -471,10 +478,8 @@ class MainActivity : Activity() {
             }
         }
 
-        // Recalcul du Top 3 après la récupération.
         recommendBrawlers()
 
-        // On conserve le résultat du Top 3 avant d'afficher le diagnostic.
         val top3Message = result.text.toString()
 
         val diagnostics = detectedResults
@@ -657,7 +662,4 @@ class MainActivity : Activity() {
 
         result.text =
             "Mode : ${selectedMode.ifBlank { "Non choisi" }}\n" +
-            "Carte : ${selectedMap.ifBlank { "Non choisie" }}\n\n" +
-            "Ton équipe : ${selectedTeam.joinToString(", ").ifBlank { "À compléter" }}"
-    }
-}
+            "Carte : ${selectedMap.if
