@@ -53,40 +53,15 @@ class OverlayService : Service() {
 
             statusText?.text = "●  $message"
 
-            var mode = intent.getStringExtra(
+            // Chaque nouvelle analyse remplace les anciennes données.
+            // Une valeur absente signifie que la détection a échoué.
+            detectedMode = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MODE
-            )
+            )?.takeIf { it.isNotBlank() }
 
-            var map = intent.getStringExtra(
+            detectedMap = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MAP
-            )
-
-            // Récupération de secours depuis le message.
-            if (mode.isNullOrBlank()) {
-                val match = Regex(
-                    """Mode\s*:\s*(.*?)\s*\|\s*Carte""",
-                    RegexOption.IGNORE_CASE
-                ).find(message)
-
-                mode = match?.groupValues?.getOrNull(1)?.trim()
-            }
-
-            if (map.isNullOrBlank()) {
-                val match = Regex(
-                    """Carte\s*:\s*(.*)""",
-                    RegexOption.IGNORE_CASE
-                ).find(message)
-
-                map = match?.groupValues?.getOrNull(1)?.trim()
-            }
-
-            if (!mode.isNullOrBlank()) {
-                detectedMode = mode
-            }
-
-            if (!map.isNullOrBlank()) {
-                detectedMap = map
-            }
+            )?.takeIf { it.isNotBlank() }
 
             renderModeMap()
         }
@@ -143,13 +118,12 @@ class OverlayService : Service() {
 
         registerStatusReceiver()
 
-        val detection =
-            BrawlModeMapStore.latestDetection
+        // Récupération de la dernière détection,
+        // y compris si la carte n'a pas été reconnue.
+        val detection = BrawlModeMapStore.latestDetection
 
-        if (detection != null) {
-            detectedMode = detection.modeName
-            detectedMap = detection.mapName
-        }
+        detectedMode = detection?.modeName
+        detectedMap = detection?.mapName
 
         if (panel == null) {
             createPanel()
@@ -353,18 +327,12 @@ class OverlayService : Service() {
 
         container.removeAllViews()
 
-        val detection =
-            BrawlModeMapStore.latestDetection
+        // Ne jamais conserver une ancienne détection.
+        val detection = BrawlModeMapStore.latestDetection
 
         if (detection != null) {
-
-            if (!detection.modeName.isNullOrBlank()) {
-                detectedMode = detection.modeName
-            }
-
-            if (!detection.mapName.isNullOrBlank()) {
-                detectedMap = detection.mapName
-            }
+            detectedMode = detection.modeName
+            detectedMap = detection.mapName
         }
 
         val mode = detectedMode
@@ -372,7 +340,7 @@ class OverlayService : Service() {
 
         container.addView(
             makeText(
-                "Mode : ${mode ?: "En attente de détection"}",
+                "Mode : ${mode ?: "Non reconnu"}",
                 13f,
                 if (mode != null) green else muted
             ).apply {
@@ -382,7 +350,7 @@ class OverlayService : Service() {
 
         container.addView(
             makeText(
-                "Carte : ${map ?: "En attente de détection"}",
+                "Carte : ${map ?: "Non reconnue"}",
                 13f,
                 if (map != null) green else muted
             ).apply {
