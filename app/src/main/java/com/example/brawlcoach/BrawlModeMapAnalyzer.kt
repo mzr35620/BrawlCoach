@@ -15,6 +15,103 @@ object BrawlModeMapAnalyzer {
         TextRecognizerOptions.DEFAULT_OPTIONS
     )
 
+    // Correspondances entre les noms français et anglais.
+    private val modeAliases = mapOf(
+        "gem grab" to listOf(
+            "razzia de gemmes",
+            "razzia de gemme",
+            "razzia gemmes",
+            "gem grab"
+        ),
+
+        "brawl ball" to listOf(
+            "brawlball",
+            "brawl ball"
+        ),
+
+        "showdown" to listOf(
+            "survivant",
+            "survivant solo",
+            "survivant duo",
+            "survivant trio",
+            "solo showdown",
+            "duo showdown"
+        ),
+
+        "knockout" to listOf(
+            "hors jeu",
+            "horsjeu",
+            "knockout"
+        ),
+
+        "bounty" to listOf(
+            "prime",
+            "bounty"
+        ),
+
+        "heist" to listOf(
+            "braquage",
+            "heist"
+        ),
+
+        "hot zone" to listOf(
+            "zone reservee",
+            "zone réservée",
+            "hot zone"
+        ),
+
+        "wipeout" to listOf(
+            "chasse ouverte",
+            "wipeout"
+        ),
+
+        "duels" to listOf(
+            "duels",
+            "duel"
+        ),
+
+        "basket brawl" to listOf(
+            "basket brawl",
+            "basketbrawl"
+        ),
+
+        "volley brawl" to listOf(
+            "volley brawl",
+            "volleybrawl"
+        ),
+
+        "brawl hockey" to listOf(
+            "brawl hockey",
+            "hockey brawl",
+            "hockey"
+        ),
+
+        "siege" to listOf(
+            "siege",
+            "siege de robots"
+        ),
+
+        "payload" to listOf(
+            "cargaison",
+            "payload"
+        ),
+
+        "big game" to listOf(
+            "big game",
+            "gros jeu"
+        ),
+
+        "boss fight" to listOf(
+            "boss fight",
+            "combat de boss"
+        ),
+
+        "robo rumble" to listOf(
+            "robo rumble",
+            "robots a gogo"
+        )
+    )
+
     private fun normalize(value: String): String {
         return Normalizer.normalize(
             value.lowercase(Locale.ROOT),
@@ -79,7 +176,9 @@ object BrawlModeMapAnalyzer {
 
     private fun findBestMatch(
         names: List<String>,
-        detectedText: String
+        detectedText: String,
+        aliases: Map<String, List<String>> = emptyMap(),
+        threshold: Double = 0.78
     ): String? {
 
         val words = detectedText
@@ -91,42 +190,57 @@ object BrawlModeMapAnalyzer {
 
         for (originalName in names) {
 
-            val name = normalize(originalName)
+            val normalizedName = normalize(originalName)
 
-            if (name.isBlank()) continue
+            if (normalizedName.isBlank()) continue
 
-            // Correspondance exacte.
-            if (detectedText.contains(name)) {
-                return originalName
+            val candidates = mutableListOf(normalizedName)
+
+            // Ajout des traductions françaises.
+            aliases[normalizedName]?.forEach { alias ->
+                candidates.add(normalize(alias))
             }
 
-            val nameWords = name.split(" ")
-            val expectedCount = nameWords.size
+            for (candidateName in candidates) {
 
-            for (windowSize in
-                max(1, expectedCount - 1)..expectedCount + 1
-            ) {
+                if (candidateName.isBlank()) continue
 
-                if (windowSize > words.size) continue
+                // Correspondance exacte.
+                if (detectedText.contains(candidateName)) {
+                    return originalName
+                }
 
-                for (start in 0..words.size - windowSize) {
+                val expectedCount =
+                    candidateName.split(" ").size
 
-                    val candidate = words
-                        .subList(start, start + windowSize)
-                        .joinToString(" ")
+                for (
+                    windowSize in
+                    max(1, expectedCount - 1)..expectedCount + 1
+                ) {
 
-                    val score = similarity(name, candidate)
+                    if (windowSize > words.size) continue
 
-                    if (score > bestScore) {
-                        bestScore = score
-                        bestName = originalName
+                    for (start in 0..words.size - windowSize) {
+
+                        val candidate = words
+                            .subList(start, start + windowSize)
+                            .joinToString(" ")
+
+                        val score = similarity(
+                            candidateName,
+                            candidate
+                        )
+
+                        if (score > bestScore) {
+                            bestScore = score
+                            bestName = originalName
+                        }
                     }
                 }
             }
         }
 
-        // Seuil de sécurité contre les fausses détections.
-        return if (bestScore >= 0.78) {
+        return if (bestScore >= threshold) {
             bestName
         } else {
             null
@@ -160,39 +274,42 @@ object BrawlModeMapAnalyzer {
                     lines.joinToString(" ")
                 )
 
+                // Toutes les cartes disponibles et non désactivées.
                 val maps = BrawlModeMapStore.maps
                     .filter {
                         it.name.isNotBlank() && !it.disabled
                     }
 
+                // Tous les modes, y compris ceux hors rotation.
                 val modes = BrawlModeMapStore.modes
                     .filter {
-                        it.name.isNotBlank() && !it.disabled
+                        it.name.isNotBlank()
                     }
 
-                // Recherche de la carte, même avec quelques
-                // erreurs de lecture OCR.
+                // Recherche de la carte.
                 val detectedMapName = findBestMatch(
-                    maps.map { it.name },
-                    detectedText
+                    names = maps.map { it.name },
+                    detectedText = detectedText,
+                    threshold = 0.82
                 )
 
                 val detectedMap = maps.firstOrNull {
                     it.name == detectedMapName
                 }
 
-                // Recherche directe du mode.
+                // Recherche du mode français ou anglais.
                 val detectedModeName = findBestMatch(
-                    modes.map { it.name },
-                    detectedText
+                    names = modes.map { it.name },
+                    detectedText = detectedText,
+                    aliases = modeAliases,
+                    threshold = 0.82
                 )
 
                 val detectedModeFromText = modes.firstOrNull {
                     it.name == detectedModeName
                 }
 
-                // Le mode de la carte est une seconde source
-                // de reconnaissance.
+                // Le mode associé à la carte sert de secours.
                 val detectedModeFromMap =
                     detectedMap?.gameMode?.let { mapMode ->
 
