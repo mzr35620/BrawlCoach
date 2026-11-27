@@ -27,14 +27,18 @@ data class BrawlMap(
     val name: String,
     val imageUrl: String,
     val gameMode: String,
-    val disabled: Boolean
+    val disabled: Boolean,
+    val gameModeId: Int = 0,
+    val hash: String = ""
 )
 
 data class BrawlGameMode(
     val id: Int,
     val name: String,
     val imageUrl: String,
-    val disabled: Boolean
+    val disabled: Boolean,
+    val scHash: String = "",
+    val tid: String = ""
 )
 
 object BrawlApi {
@@ -42,20 +46,20 @@ object BrawlApi {
     private const val BASE_URL = "https://api.brawlapi.com"
 
     private fun download(path: String): JSONObject {
-        val connection = URL("$BASE_URL$path").openConnection()
-            as HttpURLConnection
+
+        val connection = URL("$BASE_URL$path")
+            .openConnection() as HttpURLConnection
 
         try {
             connection.requestMethod = "GET"
             connection.connectTimeout = 15000
             connection.readTimeout = 15000
-            connection.setRequestProperty(
-                "Accept",
-                "application/json"
-            )
+            connection.setRequestProperty("Accept", "application/json")
 
             if (connection.responseCode != 200) {
-                throw Exception("Erreur API : ${connection.responseCode}")
+                throw Exception(
+                    "Erreur API : ${connection.responseCode}"
+                )
             }
 
             val result = connection.inputStream
@@ -63,6 +67,7 @@ object BrawlApi {
                 .use { it.readText() }
 
             return JSONObject(result)
+
         } finally {
             connection.disconnect()
         }
@@ -72,10 +77,12 @@ object BrawlApi {
         json: JSONObject,
         key: String
     ): List<BrawlAbility> {
+
         val array = json.optJSONArray(key)
             ?: return emptyList()
 
         return (0 until array.length()).mapNotNull { index ->
+
             val item = array.optJSONObject(index)
                 ?: return@mapNotNull null
 
@@ -93,11 +100,13 @@ object BrawlApi {
     }
 
     fun getBrawlers(): List<Brawler> {
+
         val array = download("/v1/brawlers")
             .optJSONArray("list")
             ?: return emptyList()
 
         return (0 until array.length()).mapNotNull { index ->
+
             val item = array.optJSONObject(index)
                 ?: return@mapNotNull null
 
@@ -121,11 +130,13 @@ object BrawlApi {
     }
 
     fun getMaps(): List<BrawlMap> {
+
         val array = download("/v1/maps")
             .optJSONArray("list")
             ?: return emptyList()
 
         return (0 until array.length()).mapNotNull { index ->
+
             val item = array.optJSONObject(index)
                 ?: return@mapNotNull null
 
@@ -136,17 +147,21 @@ object BrawlApi {
                 name = item.optString("name"),
                 imageUrl = item.optString("imageUrl"),
                 gameMode = mode?.optString("name") ?: "",
-                disabled = item.optBoolean("disabled")
+                disabled = item.optBoolean("disabled"),
+                gameModeId = mode?.optInt("id") ?: 0,
+                hash = item.optString("hash")
             )
         }
     }
 
     fun getGameModes(): List<BrawlGameMode> {
+
         val array = download("/v1/gamemodes")
             .optJSONArray("list")
             ?: return emptyList()
 
         return (0 until array.length()).mapNotNull { index ->
+
             val item = array.optJSONObject(index)
                 ?: return@mapNotNull null
 
@@ -154,7 +169,9 @@ object BrawlApi {
                 id = item.optInt("id"),
                 name = item.optString("name"),
                 imageUrl = item.optString("imageUrl"),
-                disabled = item.optBoolean("disabled")
+                disabled = item.optBoolean("disabled"),
+                scHash = item.optString("scHash"),
+                tid = item.optString("TID")
             )
         }
     }
