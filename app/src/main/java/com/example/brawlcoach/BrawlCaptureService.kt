@@ -33,7 +33,10 @@ class BrawlCaptureService : Service() {
 
         const val ACTION_STATUS =
             "com.example.brawlcoach.CAPTURE_STATUS"
+
         const val EXTRA_STATUS = "status"
+        const val EXTRA_MODE = "detected_mode"
+        const val EXTRA_MAP = "detected_map"
 
         private const val CHANNEL_ID = "brawl_capture"
         private const val NOTIFICATION_ID = 2002
@@ -60,10 +63,22 @@ class BrawlCaptureService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun sendStatus(message: String) {
+    private fun sendStatus(
+        message: String,
+        mode: String? = null,
+        map: String? = null
+    ) {
         val intent = Intent(ACTION_STATUS).apply {
             setPackage(packageName)
             putExtra(EXTRA_STATUS, message)
+
+            if (mode != null) {
+                putExtra(EXTRA_MODE, mode)
+            }
+
+            if (map != null) {
+                putExtra(EXTRA_MAP, map)
+            }
         }
 
         sendBroadcast(intent)
@@ -87,6 +102,7 @@ class BrawlCaptureService : Service() {
         }
 
     private fun finishAnalysis(bitmap: Bitmap?) {
+
         if (bitmap != null && !bitmap.isRecycled) {
             bitmap.recycle()
         }
@@ -125,7 +141,7 @@ class BrawlCaptureService : Service() {
 
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Brawl Coach")
-            .setContentText("Capture active")
+            .setContentText("Détection du mode et de la carte")
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setOngoing(true)
             .build()
@@ -170,6 +186,7 @@ class BrawlCaptureService : Service() {
     }
 
     private fun startCapture() {
+
         val metrics = DisplayMetrics()
 
         @Suppress("DEPRECATION")
@@ -203,7 +220,6 @@ class BrawlCaptureService : Service() {
 
                 if (image != null && captureActive) {
 
-                    // Vérifie le délai AVANT la conversion Bitmap.
                     if (tryStartAnalysis()) {
 
                         val bitmap = imageToBitmap(image)
@@ -212,8 +228,9 @@ class BrawlCaptureService : Service() {
 
                             if (!frameReceived) {
                                 frameReceived = true
+
                                 sendStatus(
-                                    "Image reçue. Analyse locale active."
+                                    "Image reçue. Détection du mode et de la carte."
                                 )
                             }
 
@@ -228,6 +245,7 @@ class BrawlCaptureService : Service() {
             } catch (e: Exception) {
                 finishAnalysis(null)
                 sendStatus("Erreur de lecture de l'image.")
+
             } finally {
                 image?.close()
             }
@@ -246,7 +264,9 @@ class BrawlCaptureService : Service() {
         )
 
         if (virtualDisplay != null) {
-            sendStatus("Capture démarrée. En attente de l'image.")
+            sendStatus(
+                "Capture démarrée. En attente de l'écran classé."
+            )
         } else {
             sendStatus("Impossible de démarrer la capture.")
         }
@@ -258,54 +278,54 @@ class BrawlCaptureService : Service() {
             analysisExecutor.execute {
 
                 try {
-                    // Analyse locale des zones de portraits.
-                    val draftResults =
-                        BrawlDraftAnalyzer.analyze(bitmap)
-
-                    BrawlDraftResultStore.update(draftResults)
-
-                    // OCR local sur la même image.
-                    BrawlOcrAnalyzer.analyze(bitmap) { result ->
+                    // Analyse OCR locale du mode et de la carte.
+                    BrawlModeMapAnalyzer.analyze(bitmap) { result ->
 
                         try {
-                            if (!captureActive) {
-                                return@analyze
-                            }
+                            if (captureActive) {
 
-                            val draftMessage =
-                                draftResults.joinToString(
-                                    separator = " | "
-                                ) { slot ->
+                                result.fold(
 
-                                    val score =
-                                        (slot.confidence * 100).toInt()
+                                    onSuccess = { detection ->
 
-                                    "${slot.slot}: " +
-                                        "${slot.brawlerName} " +
-                                        "($score%)"
-                                }
+                                        BrawlModeMapStore.updateDetection(
+                                            detection
+                                        )
 
-                            val ocrMessage = result.fold(
-                                onSuccess = { names ->
-                                    if (names.isEmpty()) {
-                                        "OCR : aucun nom reconnu"
-                                    } else {
-                                        "OCR : ${names.joinToString(", ")}"
+                                        val mode =
+                                            detection.modeName
+
+                                        val map =
+                                            detection.mapName
+
+                                        val message = when {
+                                            mode != null && map != null ->
+                                                "Mode : $mode | Carte : $map"
+
+                                            mode != null ->
+                                                "Mode détecté : $mode | Carte non reconnue"
+
+                                            map != null ->
+                                                "Carte détectée : $map | Mode non reconnu"
+
+                                            else ->
+                                                "Mode et carte non reconnus. En attente..."
+                                        }
+
+                                        sendStatus(
+                                            message,
+                                            mode,
+                                            map
+                                        )
+                                    },
+
+                                    onFailure = {
+                                        sendStatus(
+                                            "Erreur pendant la détection du mode et de la carte."
+                                        )
                                     }
-                                },
-                                onFailure = {
-                                    "OCR indisponible"
-                                }
-                            )
-
-                            sendStatus(
-                                if (draftMessage.isNotEmpty()) {
-                                    "$draftMessage | $ocrMessage"
-                                } else {
-                                    "Zones de portraits non détectées | " +
-                                        ocrMessage
-                                }
-                            )
+                                )
+                            }
 
                         } finally {
                             finishAnalysis(bitmap)
@@ -313,19 +333,24 @@ class BrawlCaptureService : Service() {
                     }
 
                 } catch (e: Exception) {
+
                     finishAnalysis(bitmap)
 
                     if (captureActive) {
                         sendStatus(
-                            "Erreur pendant l'analyse des portraits."
+                            "Erreur pendant l'analyse de l'écran."
                         )
                     }
                 }
             }
 
         } catch (e: Exception) {
+
             finishAnalysis(bitmap)
-            sendStatus("Impossible de lancer l'analyse.")
+
+            sendStatus(
+                "Impossible de lancer l'analyse."
+            )
         }
     }
 
@@ -384,6 +409,7 @@ class BrawlCaptureService : Service() {
     }
 
     private fun releaseResources() {
+
         captureActive = false
 
         virtualDisplay?.release()
@@ -395,14 +421,17 @@ class BrawlCaptureService : Service() {
     }
 
     private fun stopCapture() {
+
         releaseResources()
 
         val currentProjection = projection
         projection = null
+
         currentProjection?.stop()
     }
 
     private fun createNotificationChannel() {
+
         if (Build.VERSION.SDK_INT >= 26) {
 
             val channel = NotificationChannel(
@@ -418,8 +447,10 @@ class BrawlCaptureService : Service() {
     }
 
     override fun onDestroy() {
+
         stopCapture()
         analysisExecutor.shutdown()
+
         super.onDestroy()
     }
 }
