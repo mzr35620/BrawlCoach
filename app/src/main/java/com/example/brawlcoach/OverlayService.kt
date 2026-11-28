@@ -53,8 +53,6 @@ class OverlayService : Service() {
 
             statusText?.text = "●  $message"
 
-            // Chaque nouvelle analyse remplace les anciennes données.
-            // Une valeur absente signifie que la détection a échoué.
             detectedMode = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MODE
             )?.takeIf { it.isNotBlank() }
@@ -118,8 +116,6 @@ class OverlayService : Service() {
 
         registerStatusReceiver()
 
-        // Récupération de la dernière détection,
-        // y compris si la carte n'a pas été reconnue.
         val detection = BrawlModeMapStore.latestDetection
 
         detectedMode = detection?.modeName
@@ -327,7 +323,6 @@ class OverlayService : Service() {
 
         container.removeAllViews()
 
-        // Ne jamais conserver une ancienne détection.
         val detection = BrawlModeMapStore.latestDetection
 
         if (detection != null) {
@@ -358,29 +353,43 @@ class OverlayService : Service() {
             }
         )
 
-        if (mode == null || map == null) {
+        when {
 
-            container.addView(
-                makeText(
-                    "Analyse de l'écran en cours...",
-                    11f,
-                    muted
-                ).apply {
-                    setPadding(0, 10, 0, 2)
-                }
-            )
+            mode != null && map != null -> {
+                container.addView(
+                    makeText(
+                        "Mode et carte reconnus",
+                        11f,
+                        green
+                    ).apply {
+                        setPadding(0, 10, 0, 2)
+                    }
+                )
+            }
 
-        } else {
+            mode != null -> {
+                container.addView(
+                    makeText(
+                        "Mode reconnu — analyse possible sans carte",
+                        11f,
+                        green
+                    ).apply {
+                        setPadding(0, 10, 0, 2)
+                    }
+                )
+            }
 
-            container.addView(
-                makeText(
-                    "Mode et carte reconnus",
-                    11f,
-                    green
-                ).apply {
-                    setPadding(0, 10, 0, 2)
-                }
-            )
+            else -> {
+                container.addView(
+                    makeText(
+                        "En attente de reconnaissance du mode...",
+                        11f,
+                        muted
+                    ).apply {
+                        setPadding(0, 10, 0, 2)
+                    }
+                )
+            }
         }
     }
 
