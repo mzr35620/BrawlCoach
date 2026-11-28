@@ -4,9 +4,11 @@ package com.example.brawlcoach
 import android.graphics.Bitmap
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.text.Normalizer
 import java.util.Locale
+import kotlin.math.max
 
 object BrawlModeMapAnalyzer {
 
@@ -14,7 +16,8 @@ object BrawlModeMapAnalyzer {
         TextRecognizerOptions.DEFAULT_OPTIONS
     )
 
-    private val aliases = mapOf(
+    // Noms français et anglais des modes.
+    private val modeAliases = mapOf(
         "gem grab" to listOf(
             "razzia de gemmes",
             "razzia de gemme",
@@ -24,7 +27,8 @@ object BrawlModeMapAnalyzer {
         ),
         "brawl ball" to listOf(
             "brawlball",
-            "brawl ball"
+            "brawl ball",
+            "balle brawl"
         ),
         "showdown" to listOf(
             "survivant",
@@ -63,11 +67,13 @@ object BrawlModeMapAnalyzer {
         ),
         "basket brawl" to listOf(
             "basket brawl",
-            "basketbrawl"
+            "basketbrawl",
+            "basket"
         ),
         "volley brawl" to listOf(
             "volley brawl",
-            "volleybrawl"
+            "volleybrawl",
+            "volley"
         ),
         "brawl hockey" to listOf(
             "brawl hockey",
@@ -80,7 +86,8 @@ object BrawlModeMapAnalyzer {
         ),
         "big game" to listOf(
             "big game",
-            "biggame"
+            "biggame",
+            "gros jeu"
         ),
         "boss fight" to listOf(
             "boss fight",
@@ -96,8 +103,6 @@ object BrawlModeMapAnalyzer {
 
     private fun normalize(value: String): String {
 
-        // Sépare les identifiants camelCase :
-        // gemGrab devient gem Grab.
         val separated = value.replace(
             Regex("([a-z])([A-Z])"),
             "$1 $2"
@@ -113,43 +118,169 @@ object BrawlModeMapAnalyzer {
             .replace(Regex("\\s+"), " ")
     }
 
-    private fun containsPhrase(
+    private fun compact(value: String): String {
+        return normalize(value).replace(" ", "")
+    }
+
+    // Distance de Levenshtein pour tolérer les erreurs OCR.
+    private fun levenshtein(
+        first: String,
+        second: String
+    ): Int {
+
+        if (first == second) return 0
+        if (first.isEmpty()) return second.length
+        if (second.isEmpty()) return first.length
+
+        var previous = IntArray(second.length + 1) {
+            it
+        }
+
+        for (i in first.indices) {
+
+            val current = IntArray(second.length + 1)
+            current[0] = i + 1
+
+            for (j in second.indices) {
+
+                val cost = if (
+                    first[i] == second[j]
+                ) 0 else 1
+
+                current[j + 1] = minOf(
+                    current[j] + 1,
+                    previous[j + 1] + 1,
+                    previous[j] + cost
+                )
+            }
+
+            previous = current
+        }
+
+        return previous[second.length]
+    }
+
+    private fun similarity(
+        first: String,
+        second: String
+    ): Double {
+
+        if (first.isBlank() || second.isBlank()) {
+            return 0.0
+        }
+
+        val a = compact(first)
+        val b = compact(second)
+
+        if (a == b) return 1.0
+
+        val distance = levenshtein(a, b)
+        val longest = max(a.length, b.length)
+
+        return 1.0 - distance.toDouble() / longest
+    }
+
+    private fun phraseScore(
         text: String,
         phrase: String
-    ): Boolean {
+    ): Double {
 
         val normalizedText = normalize(text)
         val normalizedPhrase = normalize(phrase)
 
-        if (normalizedPhrase.isBlank()) return false
+        if (
+            normalizedText.isBlank() ||
+            normalizedPhrase.isBlank()
+        ) return 0.0
 
-        return " $normalizedText ".contains(
-            " $normalizedPhrase "
-        )
-    }
-
-    private fun containsMapName(
-        text: String,
-        mapName: String
-    ): Boolean {
-
-        val normalizedText = normalize(text)
-        val normalizedName = normalize(mapName)
-
-        if (normalizedName.isBlank()) return false
-
-        // Correspondance normale.
-        if (containsPhrase(normalizedText, normalizedName)) {
-            return true
+        if (
+            " $normalizedText ".contains(
+                " $normalizedPhrase "
+            )
+        ) {
+            return 1.0
         }
 
-        // Correspondance sans espaces pour les erreurs OCR.
-        // On évite les noms trop courts pour limiter les faux positifs.
-        val compactName = normalizedName.replace(" ", "")
-        val compactText = normalizedText.replace(" ", "")
+        val compactText = compact(normalizedText)
+        val compactPhrase = compact(normalizedPhrase)
 
-        return compactName.length >= 8 &&
-            compactText.contains(compactName)
+        if (
+            compactPhrase.length >= 5 &&
+            compactText.contains(compactPhrase)
+        ) {
+            return 0.98
+        }
+
+        // Comparaison avec chaque ligne OCR.
+        val lines = text.lines().filter {
+            it.isNotBlank()
+        }
+
+        var best = 0.0
+
+        for (line in lines) {
+            best = max(
+                best,
+                similarity(line, phrase)
+            )
+        }
+
+        // Comparaison avec deux lignes consécutives.
+        for (i in 0 until lines.size - 1) {
+            best = max(
+                best,
+                similarity(
+                    "${lines[i]} ${lines[i + 1]}",
+                    phrase
+                )
+            )
+        }
+
+        // Tolérance limitée pour les erreurs de lecture.
+        val threshold = when {
+            compactPhrase.length >= 12 -> 0.78
+            compactPhrase.length >= 8 -> 0.84
+            else -> 0.92
+        }
+
+        return if (best >= threshold) best else 0.0
+    }
+
+    private fun getModeCandidates(
+        mode: BrawlGameMode
+    ): List<String> {
+
+        val candidates = mutableListOf<String>()
+
+        candidates.add(mode.name)
+        candidates.add(mode.scHash)
+        candidates.add(mode.tid)
+
+        val keys = listOf(
+            mode.name,
+            mode.scHash,
+            mode.tid
+        ).map {
+            normalize(it).replace(" ", "")
+        }
+
+        modeAliases.forEach { (canonical, aliases) ->
+
+            val normalizedCanonical =
+                normalize(canonical).replace(" ", "")
+
+            if (keys.any {
+                it == normalizedCanonical ||
+                    it.contains(normalizedCanonical)
+            }) {
+                candidates.add(canonical)
+                candidates.addAll(aliases)
+            }
+        }
+
+        return candidates
+            .filter { it.isNotBlank() }
+            .distinctBy { normalize(it) }
     }
 
     private fun detectMode(
@@ -157,38 +288,23 @@ object BrawlModeMapAnalyzer {
         modes: List<BrawlGameMode>
     ): BrawlGameMode? {
 
-        val candidates = mutableListOf<
-            Pair<BrawlGameMode, String>
-        >()
-
-        for (mode in modes) {
-
-            val normalizedName = normalize(mode.name)
-            val normalizedHash = normalize(mode.scHash)
-
-            if (normalizedName.isNotBlank()) {
-                candidates.add(mode to normalizedName)
-
-                aliases[normalizedName]?.forEach { alias ->
-                    candidates.add(mode to normalize(alias))
-                }
-            }
-
-            if (normalizedHash.isNotBlank()) {
-                candidates.add(mode to normalizedHash)
-
-                aliases[normalizedHash]?.forEach { alias ->
-                    candidates.add(mode to normalize(alias))
-                }
-            }
+        if (text.isBlank() || modes.isEmpty()) {
+            return null
         }
 
-        return candidates
-            .distinctBy { "${it.first.id}_${it.second}" }
-            .sortedByDescending { it.second.length }
-            .firstOrNull { (_, phrase) ->
-                containsPhrase(text, phrase)
+        return modes
+            .filter { !it.disabled }
+            .map { mode ->
+
+                val score = getModeCandidates(mode)
+                    .maxOfOrNull { candidate ->
+                        phraseScore(text, candidate)
+                    } ?: 0.0
+
+                mode to score
             }
+            .filter { it.second > 0.0 }
+            .maxByOrNull { it.second }
             ?.first
     }
 
@@ -198,22 +314,33 @@ object BrawlModeMapAnalyzer {
         modeId: Int
     ): BrawlMap? {
 
-        if (modeId <= 0) return null
+        if (modeId <= 0 || text.isBlank()) {
+            return null
+        }
 
-        // On conserve uniquement les cartes du mode détecté.
         val compatibleMaps = maps.filter { map ->
             map.gameModeId == modeId &&
                 map.name.isNotBlank() &&
                 !map.disabled
         }
 
+        if (compatibleMaps.isEmpty()) {
+            return null
+        }
+
         return compatibleMaps
-            .sortedByDescending {
-                normalize(it.name).length
+            .map { map ->
+
+                val score = phraseScore(
+                    text,
+                    map.name
+                )
+
+                map to score
             }
-            .firstOrNull { map ->
-                containsMapName(text, map.name)
-            }
+            .filter { it.second > 0.0 }
+            .maxByOrNull { it.second }
+            ?.first
     }
 
     fun analyze(
@@ -235,40 +362,38 @@ object BrawlModeMapAnalyzer {
         val image = InputImage.fromBitmap(bitmap, 0)
 
         recognizer.process(image)
-            .addOnSuccessListener { visionText ->
+            .addOnSuccessListener { visionText: Text ->
 
-                // Utilise tout le texte reconnu par ML Kit.
-                val detectedText = normalize(
-                    visionText.text
-                )
+                val rawText = visionText.text
 
                 val modes = BrawlModeMapStore.modes
                 val maps = BrawlModeMapStore.maps
 
-                // 1. Détection du mode.
+                // 1. Recherche du mode dans le catalogue BrawlAPI.
                 val detectedMode = detectMode(
-                    detectedText,
+                    rawText,
                     modes
                 )
 
-                // 2. Détection de la carte dans ce mode.
+                // 2. Recherche de la carte compatible.
                 val detectedMap = detectedMode?.let { mode ->
                     detectMap(
-                        detectedText,
+                        rawText,
                         maps,
                         mode.id
                     )
                 }
 
-                onResult(
-                    Result.success(
-                        BrawlModeMapDetection(
-                            modeName = detectedMode?.name,
-                            mapName = detectedMap?.name,
-                            detectedText = detectedText
-                        )
-                    )
+                val result = BrawlModeMapDetection(
+                    modeName = detectedMode?.name,
+                    mapName = detectedMap?.name,
+                    detectedText = normalize(rawText)
                 )
+
+                // Conservation du dernier résultat.
+                BrawlModeMapStore.updateDetection(result)
+
+                onResult(Result.success(result))
             }
             .addOnFailureListener { error ->
                 onResult(Result.failure(error))
