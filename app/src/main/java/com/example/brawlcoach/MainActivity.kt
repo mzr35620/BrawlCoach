@@ -14,8 +14,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -55,25 +53,17 @@ class MainActivity : Activity() {
                 BrawlCaptureService.EXTRA_STATUS
             ) ?: "Analyse en cours..."
 
-            val detectedMode = intent.getStringExtra(
+            // Chaque nouvelle analyse remplace les anciennes valeurs.
+            selectedMode = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MODE
-            )
+            )?.takeIf { it.isNotBlank() } ?: ""
 
-            val detectedMap = intent.getStringExtra(
+            selectedMap = intent.getStringExtra(
                 BrawlCaptureService.EXTRA_MAP
-            )
+            )?.takeIf { it.isNotBlank() } ?: ""
 
-            if (!detectedMode.isNullOrBlank()) {
-                selectedMode = detectedMode
-            }
-
-            if (!detectedMap.isNullOrBlank()) {
-                selectedMap = detectedMap
-            }
-
-            if (allBrawlers.isNotEmpty() &&
-                selectedMode.isNotBlank() &&
-                selectedMap.isNotBlank()
+            if (selectedMode.isNotBlank() &&
+                allBrawlers.isNotEmpty()
             ) {
 
                 val key = "$selectedMode|$selectedMap"
@@ -85,11 +75,20 @@ class MainActivity : Activity() {
 
             } else {
 
+                if (selectedMode.isBlank()) {
+                    lastRecommendationKey = ""
+                }
+
                 result.text =
                     "BRAWL COACH\n\n" +
                     "$status\n\n" +
                     "Mode : ${selectedMode.ifBlank { "En attente" }}\n" +
-                    "Carte : ${selectedMap.ifBlank { "En attente" }}"
+                    "Carte : ${selectedMap.ifBlank { "Non reconnue" }}\n\n" +
+                    if (allBrawlers.isEmpty()) {
+                        "Charge les données BrawlAPI."
+                    } else {
+                        "En attente de la détection d'un mode."
+                    }
             }
         }
     }
@@ -176,6 +175,7 @@ class MainActivity : Activity() {
 
         loadButton = Button(this).apply {
             text = "CHARGER LES DONNÉES BRAWLAPI"
+
             setOnClickListener {
                 loadBrawlData()
             }
@@ -290,7 +290,7 @@ class MainActivity : Activity() {
 
                 result.text =
                     "Capture démarrée.\n\n" +
-                    "En attente de la détection du mode et de la carte."
+                    "En attente de la détection du mode."
 
             } catch (e: Exception) {
 
@@ -333,13 +333,19 @@ class MainActivity : Activity() {
                     loadButton.isEnabled = true
                     loadButton.text = "ACTUALISER LES DONNÉES"
 
-                    result.text =
-                        "DONNÉES CHARGÉES !\n\n" +
-                        "Brawlers : ${allBrawlers.size}\n" +
-                        "Cartes : ${allMaps.size}\n" +
-                        "Modes : ${allModes.size}\n\n" +
-                        "Tu peux démarrer l'analyse de Brawl Stars."
+                    if (selectedMode.isNotBlank()) {
+                        lastRecommendationKey = ""
+                        recommendBrawlers()
+                    } else {
+                        result.text =
+                            "DONNÉES CHARGÉES !\n\n" +
+                            "Brawlers : ${allBrawlers.size}\n" +
+                            "Cartes : ${allMaps.size}\n" +
+                            "Modes : ${allModes.size}\n\n" +
+                            "Tu peux démarrer l'analyse de Brawl Stars."
+                    }
                 }
+
             } catch (e: Exception) {
 
                 runOnUiThread {
@@ -362,12 +368,12 @@ class MainActivity : Activity() {
             return
         }
 
-        if (selectedMode.isBlank() || selectedMap.isBlank()) {
-            result.text =
-                "En attente de la détection du mode et de la carte."
+        if (selectedMode.isBlank()) {
+            result.text = "En attente de la détection du mode."
             return
         }
 
+        // La carte est facultative.
         val recommendations = BrawlCoachAI.recommend(
             brawlers = allBrawlers,
             modeName = selectedMode,
@@ -387,7 +393,14 @@ class MainActivity : Activity() {
             append("🏆 TOP 3 BRAWL COACH\n\n")
 
             append("Mode : $selectedMode\n")
-            append("Carte : $selectedMap\n\n")
+
+            append(
+                "Carte : ${
+                    selectedMap.ifBlank {
+                        "Non reconnue - analyse par mode"
+                    }
+                }\n\n"
+            )
 
             recommendations.forEachIndexed { index, recommendation ->
 
@@ -407,6 +420,7 @@ class MainActivity : Activity() {
             }
 
             append("Analyse automatique terminée.\n\n")
+
             append(
                 "Classement indicatif basé sur les règles " +
                 "stratégiques intégrées à Brawl Coach."
